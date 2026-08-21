@@ -17,8 +17,13 @@ env/
 # Large datasets
 data/raw/*
 !data/raw/.gitkeep
+
 data/processed/*
 !data/processed/.gitkeep
+
+# Reduced dataset - tracked using Git LFS
+!data/reduced/
+!data/reduced/*.csv
 
 # Trained models
 models/trained_model/*
