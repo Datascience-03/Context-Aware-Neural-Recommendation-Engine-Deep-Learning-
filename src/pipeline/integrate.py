@@ -30,7 +30,7 @@ def run_integration_pipeline():
 
     # 2. Run Member 2 pipeline to clean and process data
     print("Step 1: Running PySpark/Pandas Data Processing Pipeline...")
-    from src.pipeline.pyspark_pipeline import main as run_pyspark_pipeline
+    from src.pipeline.pyspark_pipeline import run_pyspark_pipeline
     run_pyspark_pipeline()
     
     # 3. Load processed data

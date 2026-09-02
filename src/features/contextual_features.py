@@ -160,16 +160,42 @@ def compute_product_popularity_over_time(
 # Example Usage / Test
 # -------------------------------------------------------------
 if __name__ == "__main__":
-    # Test transactions
-    tx_df = pd.DataFrame({
-        'customer_id': ['U1', 'U1', 'U1', 'U2', 'U2'],
-        't_dat': ['2023-01-01', '2023-01-10', '2023-01-25', '2023-02-01', '2023-02-05'],
-        'article_id': [1001, 1002, 1001, 1003, 1001]
-    })
-    
-    print("Testing extraction...")
+    print("Loading transaction data...")
+
+    input_path = "data/reduced/transactions_reduced.csv"
+    output_path = "data/processed/contextual_features.csv"
+
+    # Load real transaction data
+    tx_df = pd.read_csv(input_path)
+
+    print("Original rows:", len(tx_df))
+
+    # Generate contextual features
     tx_df = extract_calendar_features(tx_df)
     tx_df = add_cyclical_encoding(tx_df)
     tx_df = generate_recency_frequency_features(tx_df)
     tx_df = compute_product_popularity_over_time(tx_df)
-    print(tx_df)
+
+    print("Final rows:", len(tx_df))
+
+    # Save generated features
+    tx_df.to_csv(output_path, index=False)
+
+    print("Contextual features saved successfully!")
+    print("Output:", output_path)
+
+    # Verify missing values
+    feature_columns = [
+        "day_of_week",
+        "is_weekend",
+        "month",
+        "quarter",
+        "season",
+        "days_since_last_purchase",
+        "purchase_sequence",
+        "avg_inter_purchase_days",
+        "popularity_over_time",
+    ]
+
+    print("\nMissing values in contextual features:")
+    print(tx_df[feature_columns].isna().sum())
