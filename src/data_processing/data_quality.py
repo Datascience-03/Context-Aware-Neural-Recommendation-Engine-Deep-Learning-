@@ -1,7 +1,7 @@
 import os
 import pandas as pd
 
-
+# Define paths for the reduced datasets and generated quality report.
 BASE_PATH = os.path.join("data", "reduced")
 REPORT_PATH = os.path.join("outputs", "reports", "data_quality_report.txt")
 
