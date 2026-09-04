@@ -5,7 +5,7 @@ import pandas as pd
 BASE_PATH = os.path.join("data", "reduced")
 REPORT_PATH = os.path.join("outputs", "reports", "data_quality_report.txt")
 
-
+# Load the reduced articles, customers, and transactions datasets.
 def load_datasets():
     articles = pd.read_csv(
         os.path.join(BASE_PATH, "articles_reduced.csv")
