@@ -33,3 +33,27 @@ def load_item_data(path: str) -> pd.DataFrame:
     df["product_code"] = df["product_code"].astype(str)
 
     return df
+def encode_item_categories(df: pd.DataFrame):
+    """Encode categorical item features as integer IDs."""
+
+    encoded_df = df.copy()
+    encoders = {}
+
+    categorical_columns = ITEM_COLUMNS[2:]
+
+    for column in categorical_columns:
+        categories = sorted(encoded_df[column].astype(str).unique())
+
+        encoder = {value: index + 1 for index, value in enumerate(categories)}
+
+        encoded_df[column] = (
+            encoded_df[column]
+            .astype(str)
+            .map(encoder)
+            .fillna(0)
+            .astype(int)
+        )
+
+        encoders[column] = encoder
+
+    return encoded_df, encoders
