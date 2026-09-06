@@ -19,7 +19,7 @@ def load_datasets():
 
     return articles, customers, transactions
 
-
+# Analyze dataset size, duplicate records, missing values, and identifier uniqueness.
 def analyze_dataset(name, df, id_column=None):
     report = []
 
