@@ -57,7 +57,7 @@ def analyze_dataset(name, df, id_column=None):
 
     return report
 
-
+# Validate customer records by checking for invalid age values.
 def validate_customers(customers):
     report = []
 
