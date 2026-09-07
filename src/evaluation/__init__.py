@@ -1,6 +1,7 @@
 """
 Evaluation Module for Context-Aware Neural Recommendation Engine.
-Provides ranking metrics, evaluation dataset preparation, and retrieval evaluator pipeline.
+Provides ranking metrics, evaluation dataset preparation, retrieval evaluator pipeline,
+and baseline recommendation models with comparative benchmarking harness.
 """
 
 from src.evaluation.metrics import (
@@ -14,6 +15,14 @@ from src.evaluation.evaluator import (
     EvaluationDataset,
     RetrievalEvaluator,
 )
+from src.evaluation.baselines import (
+    BaseRecommender,
+    PopularityRecommender,
+    RecentPopularityRecommender,
+    UserHistoryRecommender,
+    RandomRecommender,
+    BenchmarkHarness,
+)
 
 __all__ = [
     "recall_at_k",
@@ -23,4 +32,10 @@ __all__ = [
     "evaluate_batch_metrics",
     "EvaluationDataset",
     "RetrievalEvaluator",
+    "BaseRecommender",
+    "PopularityRecommender",
+    "RecentPopularityRecommender",
+    "UserHistoryRecommender",
+    "RandomRecommender",
+    "BenchmarkHarness",
 ]
