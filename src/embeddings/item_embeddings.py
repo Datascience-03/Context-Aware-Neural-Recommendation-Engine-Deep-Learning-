@@ -57,6 +57,7 @@ def encode_item_categories(df: pd.DataFrame):
         encoders[column] = encoder
 
     return encoded_df, encoders
+<<<<<<< HEAD
 def create_item_embeddings(encoded_df: pd.DataFrame, encoders: dict, embedding_dim: int = 16):
     """Create embedding layers for categorical item features."""
 
@@ -75,3 +76,5 @@ def create_item_embeddings(encoded_df: pd.DataFrame, encoders: dict, embedding_d
         embeddings[column] = embedding_layer
 
     return embeddings
+=======
+>>>>>>> origin/feature/member-4-contextual-features
