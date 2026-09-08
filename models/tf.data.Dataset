@@ -1,0 +1,49 @@
+import tensorflow as tf
+
+def build_training_pipeline(dataset: tf.data.Dataset, batch_size: int = 128):
+    """
+    Takes the dataset from your pipeline and prepares batches.
+    Format expected: {"query_inputs": ..., "candidate_inputs": ...}
+    """
+    return (
+        dataset
+        .shuffle(buffer_size=10000)
+        .batch(batch_size, drop_remainder=True) # drop_remainder ensures consistent batch sizes for in-batch negatives
+        .prefetch(tf.data.AUTOTUNE)
+    )
+
+# --- Execution Example ---
+if __name__ == "__main__":
+    # 1. Instantiate the two sub-towers (built by Member 3)
+    # (Example using dummy Sequential models if not already imported)
+    query_tower = tf.keras.Sequential([
+        tf.keras.layers.Dense(64, activation='relu'),
+        tf.keras.layers.Dense(32)
+    ], name="query_tower")
+
+    candidate_tower = tf.keras.Sequential([
+        tf.keras.layers.Dense(64, activation='relu'),
+        tf.keras.layers.Dense(32)
+    ], name="candidate_tower")
+
+    # 2. Initialize Two-Tower Model
+    model = TwoTowerModel(query_tower=query_tower, candidate_tower=candidate_tower)
+    
+    model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-3))
+
+    # 3. Create sample batch to test gradient flow
+    sample_batch = {
+        "query_inputs": tf.random.normal((32, 10)),
+        "candidate_inputs": tf.random.normal((32, 10))
+    }
+
+    # 4. Verify Gradients
+    verify_gradient_flow(model, sample_batch)
+
+    # 5. Connect pipeline dataset and train via model.fit()
+    train_dataset = tf.data.Dataset.from_tensor_slices(sample_batch).repeat(10)
+    train_loader = build_training_pipeline(train_dataset, batch_size=32)
+
+    print("\nStarting training...")
+    history = model.fit(train_loader, epochs=3)
+    print("Training finished successfully.")
