@@ -1,0 +1,15 @@
+# train.py
+
+# 1. Load pipeline dataset
+train_dataset = get_dataset(...)
+
+# 2. Build / load TwoTowerModel (from Member 3)
+model = TwoTowerModel(...)
+model.compile(optimizer="adam")
+
+# 3. Grab a single batch to verify gradients
+sample_batch = next(iter(train_dataset))
+verify_gradient_flow(model, sample_batch)   # <--- Run sanity check here!
+
+# 4. If check passes, start full training
+model.fit(train_dataset, epochs=5)
