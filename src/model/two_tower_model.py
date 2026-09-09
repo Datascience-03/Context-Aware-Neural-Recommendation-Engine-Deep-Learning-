@@ -77,7 +77,7 @@ class TwoTowerModel(tf.keras.Model):
     # ─────────────────────────────────────────────────────────────────────────
     # Forward pass
     # ─────────────────────────────────────────────────────────────────────────
-
+# to compute both query and candidate embeddings using arguments such as inputs and trainings
     def call(
         self,
         inputs: Dict[str, tf.Tensor],
@@ -145,9 +145,9 @@ class TwoTowerModel(tf.keras.Model):
 
         return loss, top1_acc
 
-    # ─────────────────────────────────────────────────────────────────────────
+
     # Training & evaluation step overrides
-    # ─────────────────────────────────────────────────────────────────────────
+
 
     def train_step(self, data: Dict[str, tf.Tensor]) -> Dict[str, tf.Tensor]:
         """
