@@ -52,6 +52,7 @@ BATCH_SIZE          = 16
 
 
 @pytest.fixture(scope="module")
+# to define query tower and return the parameters
 def query_tower() -> QueryTower:
     tf.random.set_seed(0)
     return QueryTower(
