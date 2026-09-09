@@ -208,7 +208,7 @@ class TwoTowerModel(tf.keras.Model):
     # ─────────────────────────────────────────────────────────────────────────
     # Inference helpers
     # ─────────────────────────────────────────────────────────────────────────
-
+# to get the user embeddings
     def get_user_embedding(
         self, inputs: Dict[str, tf.Tensor], training: bool = False
     ) -> tf.Tensor:
@@ -223,7 +223,7 @@ class TwoTowerModel(tf.keras.Model):
             tf.Tensor of shape (B, embedding_dim), L2-normalised.
         """
         return self.query_tower(inputs, training=training)
-
+#to get the item and embed
     def get_item_embedding(
         self, inputs: Dict[str, tf.Tensor], training: bool = False
     ) -> tf.Tensor:

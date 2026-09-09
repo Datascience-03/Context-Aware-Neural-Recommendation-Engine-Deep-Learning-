@@ -204,7 +204,7 @@ class TestCandidateTower:
 # ─────────────────────────────────────────────────────────────────────────────
 # TwoTowerModel tests
 # ─────────────────────────────────────────────────────────────────────────────
-
+#to generate query and candidate embeddings rom the integrated model
 class TestTwoTowerModel:
 
     def test_forward_pass_shapes(self, two_tower_model, combined_batch):
