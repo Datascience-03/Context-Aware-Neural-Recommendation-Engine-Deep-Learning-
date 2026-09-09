@@ -1,0 +1,65 @@
+CONTEXT-AWARE NEURAL RECOMMENDATION ENGINE
+WEEK 1 DATA QUALITY REPORT
+============================================================
+
+============================================================
+ARTICLES DATA QUALITY
+============================================================
+Rows: 19,519
+Columns: 25
+Duplicate rows: 0
+
+Missing values:
+detail_desc: 178 (0.91%)
+
+Unique article_id: 19,519
+Duplicate article_id: 0
+
+============================================================
+CUSTOMERS DATA QUALITY
+============================================================
+Rows: 51,527
+Columns: 7
+Duplicate rows: 0
+
+Missing values:
+FN: 30,104 (58.42%)
+Active: 30,516 (59.22%)
+club_member_status: 683 (1.33%)
+fashion_news_frequency: 246 (0.48%)
+age: 297 (0.58%)
+
+Unique customer_id: 51,527
+Duplicate customer_id: 0
+
+============================================================
+TRANSACTIONS DATA QUALITY
+============================================================
+Rows: 200,000
+Columns: 5
+Duplicate rows: 19,741
+
+Missing values:
+None
+
+============================================================
+CUSTOMER VALIDATION
+============================================================
+Invalid customer ages: 0
+
+============================================================
+ARTICLE VALIDATION
+============================================================
+Missing article IDs: 0
+Missing article descriptions: 178
+
+============================================================
+TRANSACTION VALIDATION
+============================================================
+Invalid transaction dates: 0
+Invalid transaction prices: 0
+Invalid sales channel IDs: 0
+Missing transaction customer IDs: 0
+Missing transaction article IDs: 0
+Transactions with unknown customers: 0
+Transactions with unknown articles: 0

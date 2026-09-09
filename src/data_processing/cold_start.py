@@ -1,5 +1,4 @@
 import pandas as pd
-import numpy as np
 
 
 def get_popular_items(transactions: pd.DataFrame, limit: int = 10) -> list:
