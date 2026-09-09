@@ -2,7 +2,7 @@ from pathlib import Path
 import json
 
 import tensorflow as tf
-from tensorflow.keras import layers
+layers = tf.keras.layers
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
