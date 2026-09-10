@@ -1,0 +1,4 @@
+# Add to .gitignore
+logs/
+checkpoints/
+*.h5
