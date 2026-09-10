@@ -1,4 +1,3 @@
-# src/callbacks.py
 import os
 import datetime
 import tensorflow as tf
@@ -25,6 +24,7 @@ def get_callbacks(checkpoint_dir="checkpoints", log_dir="logs/fit"):
         ),
         tf.keras.callbacks.TensorBoard(
             log_dir=run_log_dir,
-            histogram_freq=1
+            histogram_freq=1,
+            update_freq="epoch"
         )
     ]

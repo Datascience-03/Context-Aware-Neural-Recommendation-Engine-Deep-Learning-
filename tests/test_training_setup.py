@@ -22,6 +22,15 @@ def test_loss_computation():
     assert not torch.isnan(loss)
     assert loss.ndim == 0
 
+def test_learning_rate_warmup_and_step():
+    model = nn.Linear(10, 10)
+    optimizer = build_optimizer(model, lr=1e-3)
+    scheduler = build_scheduler(optimizer, num_warmup_steps=10, num_training_steps=100)
+    assert optimizer.param_groups[0]["lr"] == 0.0
+    optimizer.step()
+    scheduler.step()
+    assert optimizer.param_groups[0]["lr"] > 0.0
+
 def test_loss_reduction_on_dummy_batch():
     torch.manual_seed(42)
     batch_size, feature_dim, embed_dim = 16, 16, 32
@@ -43,4 +52,4 @@ def test_loss_reduction_on_dummy_batch():
         optimizer.step()
 
     final_loss = loss.item()
-    assert final_loss < initial_loss
+    assert final_loss < initial_loss, f"Loss failed to decrease: {initial_loss} -> {final_loss}"

@@ -107,7 +107,7 @@ def validate_articles(articles):
         )
 
     return report
-
+#validate the transactions with transations , customers and articles as parameters
 
 def validate_transactions(transactions, customers, articles):
     report = []
