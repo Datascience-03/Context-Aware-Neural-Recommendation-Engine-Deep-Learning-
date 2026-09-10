@@ -434,7 +434,7 @@ class TestModelEvaluationPipeline:
         p = self._get_pipeline()
         assert p.user_embeddings.shape == (self._n_users, EMB_DIM)
         assert p.item_embeddings.shape == (self._n_items, EMB_DIM)
-
+#test the exact index that is built
     def test_exact_index_built(self):
         p = self._get_pipeline()
         assert p.exact_index is not None
