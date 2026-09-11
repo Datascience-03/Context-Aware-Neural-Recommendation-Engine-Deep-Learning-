@@ -100,7 +100,7 @@ class TwoTowerModel(tf.keras.Model):
     # ─────────────────────────────────────────────────────────────────────────
     # Loss computation
     # ─────────────────────────────────────────────────────────────────────────
-
+#compute the embeddings lost
     def compute_loss_from_embeddings(
         self,
         query_emb: tf.Tensor,
