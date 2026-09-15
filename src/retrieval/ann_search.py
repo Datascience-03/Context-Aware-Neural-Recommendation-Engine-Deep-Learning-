@@ -9,6 +9,7 @@ import os
 import sys
 import time
 import logging
+import pickle
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 import numpy as np
@@ -25,6 +26,13 @@ try:
     HAS_FAISS = True
 except ImportError:
     HAS_FAISS = False
+
+# Optional Hnswlib dependency check
+try:
+    import hnswlib  # type: ignore
+    HAS_HNSWLIB = True
+except ImportError:
+    HAS_HNSWLIB = False
 
 
 def _normalize_vectors(vectors: np.ndarray, eps: float = 1e-12) -> np.ndarray:
@@ -465,6 +473,252 @@ class IVFIndex(VectorSearchIndex):
             out_scores.append(q_sc)
 
         return np.array(out_ids, dtype=object), np.array(out_scores, dtype=np.float32)
+
+
+class HNSWIndex(VectorSearchIndex):
+    """
+    Hierarchical Navigable Small World (HNSW) Graph-Based ANN Index.
+    Builds a multi-layer proximity graph to enable sub-linear search time with high recall.
+    """
+
+    def __init__(
+        self,
+        M: int = 16,
+        ef_construction: int = 64,
+        ef_search: int = 32,
+        normalize: bool = True,
+        metric: str = "cosine",
+        random_state: int = 42,
+        use_hnswlib: bool = False,
+    ):
+        """
+        Initialize HNSW Index.
+
+        Args:
+            M: Maximum number of bi-directional links per node in graph (2 <= M <= 64).
+            ef_construction: Search depth during index construction.
+            ef_search: Search depth during query runtime.
+            normalize: If True, vectors are L2-normalized.
+            metric: Similarity metric ("cosine" or "inner_product").
+            random_state: Random seed for graph construction reproducibility.
+            use_hnswlib: If True and hnswlib is installed, use hnswlib backend.
+        """
+        super().__init__(normalize=normalize, metric=metric)
+        self.M = max(2, M)
+        self.ef_construction = max(self.M, ef_construction)
+        self.ef_search = max(1, ef_search)
+        self.random_state = random_state
+        self.use_hnswlib = use_hnswlib and HAS_HNSWLIB
+
+        self.embeddings: np.ndarray = np.empty((0, 0), dtype=np.float32)
+        self.graph: Dict[int, List[int]] = {}
+        self.entry_point: int = 0
+        self.hnsw_backend: Optional[Any] = None
+
+    def fit(self, item_ids: Sequence[Any], embeddings: np.ndarray) -> "HNSWIndex":
+        """
+        Build HNSW proximity graph over item embeddings.
+
+        Args:
+            item_ids: Sequence of N item IDs.
+            embeddings: 2D numpy array of shape (N, D).
+
+        Returns:
+            self
+        """
+        embeddings_arr = np.asarray(embeddings, dtype=np.float32)
+        if embeddings_arr.ndim != 2:
+            raise ValueError(f"Embeddings must be 2D, got shape {embeddings_arr.shape}")
+        if len(item_ids) != embeddings_arr.shape[0]:
+            raise ValueError(
+                f"Mismatch: len(item_ids)={len(item_ids)} != embeddings.shape[0]={embeddings_arr.shape[0]}"
+            )
+
+        n_samples, self.dim = embeddings_arr.shape
+        self.item_ids = np.array(item_ids)
+
+        if self.normalize:
+            self.embeddings = _normalize_vectors(embeddings_arr)
+        else:
+            self.embeddings = embeddings_arr
+
+        if self.use_hnswlib and HAS_HNSWLIB:
+            self._fit_hnswlib(self.embeddings)
+        else:
+            self._fit_numpy_graph(self.embeddings)
+
+        self.is_fitted = True
+        return self
+
+    def _fit_hnswlib(self, embeddings: np.ndarray) -> None:
+        """Fit using native C++ hnswlib library."""
+        space = "cosine" if self.metric == "cosine" else "ip"
+        hnsw_idx = hnswlib.Index(space=space, dim=self.dim)
+        hnsw_idx.init_index(max_elements=len(embeddings), ef_construction=self.ef_construction, M=self.M)
+        hnsw_idx.add_items(embeddings, np.arange(len(embeddings)))
+        hnsw_idx.set_ef(self.ef_search)
+        self.hnsw_backend = hnsw_idx
+
+    def _fit_numpy_graph(self, embeddings: np.ndarray) -> None:
+        """
+        Build dynamic k-NN proximity graph in pure Python/NumPy.
+        """
+        n_samples = embeddings.shape[0]
+        if n_samples == 0:
+            self.graph = {}
+            return
+
+        # Compute k-nearest neighbors graph for each node
+        sim_matrix = np.matmul(embeddings, embeddings.T)
+        self.graph = {}
+
+        # Connect each node to top-M nearest neighbors (excluding self)
+        k_neighbors = min(self.M + 1, n_samples)
+        for i in range(n_samples):
+            top_k = np.argpartition(-sim_matrix[i], k_neighbors - 1)[:k_neighbors]
+            # Exclude self
+            neighbors = [int(idx) for idx in top_k if idx != i][: self.M]
+            self.graph[i] = neighbors
+
+        self.entry_point = 0
+
+    def search(
+        self,
+        query_embeddings: np.ndarray,
+        k: int = 10,
+        ef_search: Optional[int] = None,
+        **kwargs: Any,
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Search graph for top-K candidates given query vectors.
+
+        Args:
+            query_embeddings: 2D array of shape (Q, D).
+            k: Top-K items to retrieve per query.
+            ef_search: Query search depth override.
+
+        Returns:
+            Tuple of (retrieved_item_ids, scores).
+        """
+        if not self.is_fitted or self.num_items == 0:
+            raise RuntimeError("HNSWIndex must be fitted before search.")
+
+        queries = np.asarray(query_embeddings, dtype=np.float32)
+        if queries.ndim == 1:
+            queries = queries.reshape(1, -1)
+
+        if queries.shape[1] != self.dim:
+            raise ValueError(
+                f"Query dimension {queries.shape[1]} does not match index dimension {self.dim}"
+            )
+
+        if self.normalize:
+            queries = _normalize_vectors(queries)
+
+        ef = self.ef_search if ef_search is None else max(1, ef_search)
+
+        if self.use_hnswlib and self.hnsw_backend is not None:
+            self.hnsw_backend.set_ef(ef)
+            eff_k = min(k, self.num_items)
+            labels, distances = self.hnsw_backend.knn_query(queries, k=eff_k)
+            retrieved_ids = self.item_ids[labels]
+            scores = 1.0 - distances if self.metric == "cosine" else distances
+            return retrieved_ids, scores
+
+        return self._search_numpy_graph(queries, k=k, ef_search=ef)
+
+    def _search_numpy_graph(
+        self,
+        queries: np.ndarray,
+        k: int,
+        ef_search: int,
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Perform beam-search navigation across the NumPy proximity graph.
+        """
+        num_queries = queries.shape[0]
+        eff_k = min(k, self.num_items)
+        if eff_k <= 0:
+            return np.empty((num_queries, 0)), np.empty((num_queries, 0), dtype=np.float32)
+
+        out_ids = []
+        out_scores = []
+
+        for q_idx in range(num_queries):
+            q_vec = queries[q_idx]
+
+            # Greedy beam search starting from entry point
+            visited = {self.entry_point}
+            candidates = [self.entry_point]
+
+            # Expand beam using ef_search capacity
+            while len(candidates) > 0 and len(visited) < ef_search + eff_k:
+                curr = candidates.pop(0)
+                neighbors = self.graph.get(curr, [])
+                for nbr in neighbors:
+                    if nbr not in visited:
+                        visited.add(nbr)
+                        candidates.append(nbr)
+
+            # Score all visited candidate nodes
+            visited_indices = np.array(list(visited), dtype=np.int32)
+            visited_embeddings = self.embeddings[visited_indices]
+            scores = np.matmul(visited_embeddings, q_vec)
+
+            # Rank candidates
+            top_k_idx = np.argsort(-scores)[:eff_k]
+            chosen_item_indices = visited_indices[top_k_idx]
+            chosen_scores = scores[top_k_idx]
+
+            out_ids.append(self.item_ids[chosen_item_indices])
+            out_scores.append(chosen_scores)
+
+        return np.array(out_ids, dtype=object), np.array(out_scores, dtype=np.float32)
+
+
+def save_index(index: VectorSearchIndex, filepath: str) -> str:
+    """
+    Serialize and save a VectorSearchIndex (ExactSearchIndex, IVFIndex, HNSWIndex) to disk.
+
+    Args:
+        index: VectorSearchIndex instance to persist.
+        filepath: Target file path (.idx or .pkl).
+
+    Returns:
+        Absolute filepath where the index was saved.
+    """
+    abs_path = os.path.abspath(filepath)
+    os.makedirs(os.path.dirname(abs_path), exist_ok=True)
+    with open(abs_path, "wb") as f:
+        pickle.dump(index, f, protocol=pickle.HIGHEST_PROTOCOL)
+    logger.info(f"Successfully saved {index.__class__.__name__} to {abs_path}")
+    return abs_path
+
+
+def load_index(filepath: str) -> VectorSearchIndex:
+    """
+    Load and deserialize a VectorSearchIndex from disk.
+
+    Args:
+        filepath: File path to saved index.
+
+    Returns:
+        Restored VectorSearchIndex instance.
+    """
+    abs_path = os.path.abspath(filepath)
+    if not os.path.exists(abs_path):
+        raise FileNotFoundError(f"Index file not found at: {abs_path}")
+
+    with open(abs_path, "rb") as f:
+        index = pickle.load(f)
+
+    if not isinstance(index, VectorSearchIndex):
+        raise ValueError(f"Deserialized object from {abs_path} is not a VectorSearchIndex instance.")
+
+    logger.info(
+        f"Successfully loaded {index.__class__.__name__} ({index.num_items} items, dim={index.dim}) from {abs_path}"
+    )
+    return index
 
 
 class ANNEvaluator:
