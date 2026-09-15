@@ -209,7 +209,7 @@ def task_export_embeddings(**context: Any) -> None:
     trainer.build_model(num_users=num_users, num_items=num_items,
                         num_product_groups=num_pg, num_colour_groups=num_cg)
 
-    weights_path = Path(_MODEL_DIR) / "final_weights.h5"
+    weights_path = Path(_MODEL_DIR) / "final_weights.weights.h5"
     if weights_path.exists():
         # Warm-up call to build variable shapes, then load weights
         dummy_batch = {
@@ -304,38 +304,49 @@ def task_run_evaluation(**context: Any) -> None:
         logger.warning("Embedding files not found: %s. Skipping evaluation.", exc)
         return
 
-    # Load or synthesise test interactions
+        # Load or synthesise test interactions
     training_csv = Path(_PROCESSED_PATH) / "final_training_data.csv"
+
     if training_csv.exists():
         df = pd.read_csv(training_csv)
         test_df = df.tail(max(100, len(df) // 10)).copy()
 
-        # Resolve original string IDs if vocab-mapped
-        user_col = "customer_id" if "customer_id" in test_df.columns else "customer_id_idx"
-        item_col = "article_id"  if "article_id"  in test_df.columns else "article_id_idx"
+        # Use the same encoded IDs that were used to generate the saved embeddings.
+        if "customer_id_idx" not in test_df.columns:
+            raise ValueError(
+                "customer_id_idx is required for embedding-based evaluation."
+            )
+        if "article_id_idx" not in test_df.columns:
+            raise ValueError(
+                "article_id_idx is required for embedding-based evaluation."
+            )
 
-        if user_col == "customer_id_idx":
-            test_df["customer_id"] = test_df["customer_id_idx"].astype(str)
-            user_col = "customer_id"
-        if item_col == "article_id_idx":
-            test_df["article_id"] = test_df["article_id_idx"].astype(str)
-            item_col = "article_id"
+        test_df["customer_id_eval"] = test_df["customer_id_idx"].astype(str)
+        test_df["article_id_eval"] = test_df["article_id_idx"].astype(str)
+
+        user_col = "customer_id_eval"
+        item_col = "article_id_eval"
+
     else:
         logger.warning("No training CSV found. Using synthetic test interactions.")
         n = len(pipeline.user_ids)
         m = len(pipeline.item_ids)
-        scores_mat = np.matmul(pipeline.user_embeddings, pipeline.item_embeddings.T)
+        scores_mat = np.matmul(
+            pipeline.user_embeddings,
+            pipeline.item_embeddings.T
+        )
+
         records = []
         for u_idx in range(min(n, 200)):
             nearest = int(np.argmax(scores_mat[u_idx]))
             records.append({
                 "customer_id": str(pipeline.user_ids[u_idx]),
-                "article_id":  str(pipeline.item_ids[nearest]),
+                "article_id": str(pipeline.item_ids[nearest]),
             })
-        test_df  = pd.DataFrame(records)
+
+        test_df = pd.DataFrame(records)
         user_col = "customer_id"
         item_col = "article_id"
-
     metrics = pipeline.evaluate(test_df, user_col=user_col, item_col=item_col)
 
     if metrics:
@@ -505,7 +516,7 @@ if __name__ == "__main__":
         np.save(os.path.join(tmp_dir, "item_embeddings.npy"), i_embs)
         np.save(os.path.join(tmp_dir, "item_ids.npy"), i_ids)
 
-        global _MODEL_DIR
+        
         _orig = _MODEL_DIR
         _MODEL_DIR = tmp_dir
         task_build_ann_index()
