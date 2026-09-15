@@ -246,7 +246,7 @@ class ModelTrainer:
                 verbose=1,
             ),
             tf.keras.callbacks.ModelCheckpoint(
-                filepath=str(self.output_dir / "best_weights.h5"),
+                filepath=str(self.output_dir / "best_weights.weights.h5"),
                 monitor="val_loss" if val_dataset is not None else "loss",
                 save_best_only=True,
                 save_weights_only=True,
@@ -362,7 +362,7 @@ class ModelTrainer:
         """Save final model weights to output_dir/final_weights.h5."""
         if self.model is None:
             raise RuntimeError("No model to save.")
-        path = str(self.output_dir / "final_weights.h5")
+        path = str(self.output_dir / "final_weights.weights.h5")
         self.model.save_weights(path)
         logger.info("Final model weights saved → %s", path)
 
