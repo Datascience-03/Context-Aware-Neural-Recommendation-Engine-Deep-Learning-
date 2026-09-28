@@ -1,68 +1,143 @@
-import pytest
+
+import sys
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PROJECT_ROOT))
+
 import numpy as np
 import pandas as pd
-from src.features.trend_features import (
-    compute_popularity_trend_ratio,
-    compute_exponential_decay_score,
+
+from src.features.contextual_features import (
+    extract_calendar_features,
+    add_cyclical_encoding,
+    generate_recency_frequency_features,
+    compute_product_popularity_over_time,
 )
-from src.features.memory_optimizer import reduce_memory_usage
 
 
-@pytest.fixture
-def sample_transactions():
-    ref_date = pd.Timestamp("2024-03-31")
-    data = [
-        # Item 1: High recent surge (trending) -> 3 sales in 7d, 4 total in 30d
-        ("item_1", ref_date - pd.Timedelta(days=1)),
-        ("item_1", ref_date - pd.Timedelta(days=2)),
-        ("item_1", ref_date - pd.Timedelta(days=5)),
-        ("item_1", ref_date - pd.Timedelta(days=20)),
-        # Item 2: Old popularity (decaying) -> 0 sales in 7d, 3 sales in 30d
-        ("item_2", ref_date - pd.Timedelta(days=15)),
-        ("item_2", ref_date - pd.Timedelta(days=20)),
-        ("item_2", ref_date - pd.Timedelta(days=25)),
-        # Item 3: Brand new item -> 1 sale today
-        ("item_3", ref_date),
-    ]
-    return pd.DataFrame(data, columns=["item_id", "transaction_date"]), ref_date
-
-
-def test_trend_ratio_calculation(sample_transactions):
-    df, ref_date = sample_transactions
-    res = compute_popularity_trend_ratio(df, ref_date)
-
-    # Item 1: 3 / ((4 / 4) + 1e-5) ~= 3.0
-    item1_trend = res.loc[res["item_id"] == "item_1", "trend_ratio"].values[0]
-    assert np.isclose(item1_trend, 3.0, atol=1e-3)
-
-    # Item 2: 0 / ((3 / 4) + 1e-5) == 0.0
-    item2_trend = res.loc[res["item_id"] == "item_2", "trend_ratio"].values[0]
-    assert np.isclose(item2_trend, 0.0, atol=1e-3)
-
-
-def test_exponential_decay_score(sample_transactions):
-    df, ref_date = sample_transactions
-    res = compute_exponential_decay_score(df, ref_date, half_life_days=7.0)
-
-    # Item 3 bought on reference date (delta_t = 0) -> score must be exp(0) = 1.0
-    item3_score = res.loc[res["item_id"] == "item_3", "decay_score"].values[0]
-    assert np.isclose(item3_score, 1.0, atol=1e-5)
-
-    # Item 1 (recent) should have higher decay score than Item 2 (older)
-    item1_score = res.loc[res["item_id"] == "item_1", "decay_score"].values[0]
-    item2_score = res.loc[res["item_id"] == "item_2", "decay_score"].values[0]
-    assert item1_score > item2_score
-
-
-def test_memory_optimization():
+def test_calendar_features():
     df = pd.DataFrame({
-        "int_small": [1, 2, 3],
-        "int_medium": [1000, 2000, 3000],
-        "float_val": [1.123456789, 2.987654321, 3.5],
+        "t_dat": ["2024-01-15", "2024-07-20"]
     })
 
-    optimized = reduce_memory_usage(df)
+    result = extract_calendar_features(df)
 
-    assert optimized["int_small"].dtype == np.int8
-    assert optimized["int_medium"].dtype == np.int16
-    assert optimized["float_val"].dtype == np.float32
+    assert "day_of_week" in result.columns
+    assert "is_weekend" in result.columns
+    assert "month" in result.columns
+    assert "quarter" in result.columns
+    assert "season" in result.columns
+
+    assert result.loc[0, "month"] == 1
+    assert result.loc[0, "quarter"] == 1
+    assert result.loc[0, "season"] == "Winter"
+
+    assert result.loc[1, "month"] == 7
+    assert result.loc[1, "quarter"] == 3
+    assert result.loc[1, "season"] == "Summer"
+
+
+def test_cyclical_features():
+    df = pd.DataFrame({
+        "day_of_week": [1, 4, 7],
+        "month": [1, 6, 12]
+    })
+
+    result = add_cyclical_encoding(df)
+
+    expected = [
+        "day_of_week_sin",
+        "day_of_week_cos",
+        "month_sin",
+        "month_cos",
+    ]
+
+    for column in expected:
+        assert column in result.columns
+        assert result[column].notna().all()
+
+    numeric_values = result[expected].to_numpy()
+    assert np.isfinite(numeric_values).all()
+
+
+def test_recency_frequency_features():
+    df = pd.DataFrame({
+        "customer_id": ["U1", "U1", "U1", "U2"],
+        "t_dat": [
+            "2024-01-01",
+            "2024-01-05",
+            "2024-01-10",
+            "2024-02-01",
+        ],
+    })
+
+    result = generate_recency_frequency_features(df)
+
+    assert "purchase_sequence" in result.columns
+    assert "days_since_last_purchase" in result.columns
+    assert "days_since_first_purchase" in result.columns
+    assert "avg_inter_purchase_days" in result.columns
+    assert "is_first_purchase" in result.columns
+
+    u1 = result[result["customer_id"] == "U1"].sort_values("t_dat")
+
+    assert u1["purchase_sequence"].tolist() == [1, 2, 3]
+    assert u1["days_since_last_purchase"].tolist() == [-1.0, 4.0, 5.0]
+    assert u1["is_first_purchase"].tolist() == [1, 0, 0]
+
+    assert result.isna().sum().sum() == 0
+
+
+def test_popularity_feature_exists_and_has_no_missing_values():
+    df = pd.DataFrame({
+        "article_id": [1001, 1001, 1002],
+        "t_dat": [
+            "2024-01-01",
+            "2024-01-10",
+            "2024-01-10",
+        ],
+    })
+
+    result = compute_product_popularity_over_time(df)
+
+    assert "popularity_over_time" in result.columns
+    assert result["popularity_over_time"].notna().all()
+    assert np.isfinite(result["popularity_over_time"]).all()
+
+
+def test_real_hm_contextual_features():
+    path = "data/processed/contextual_features.csv"
+    df = pd.read_csv(path)
+
+    expected_columns = [
+        "day_of_week",
+        "is_weekend",
+        "month",
+        "quarter",
+        "season",
+        "day_of_week_sin",
+        "day_of_week_cos",
+        "month_sin",
+        "month_cos",
+        "days_since_last_purchase",
+        "purchase_sequence",
+        "days_since_first_purchase",
+        "avg_inter_purchase_days",
+        "is_first_purchase",
+        "popularity_over_time",
+    ]
+
+    for column in expected_columns:
+        assert column in df.columns, f"Missing contextual feature: {column}"
+
+    assert len(df) == 200000
+    assert df[expected_columns].isna().sum().sum() == 0
+
+    numeric_columns = [
+        column
+        for column in expected_columns
+        if pd.api.types.is_numeric_dtype(df[column])
+    ]
+
+    assert np.isfinite(df[numeric_columns].to_numpy()).all()

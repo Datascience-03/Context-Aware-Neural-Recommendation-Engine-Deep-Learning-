@@ -11,7 +11,10 @@ from src.retrieval import (
     VectorSearchIndex,
     ExactSearchIndex,
     IVFIndex,
+    HNSWIndex,
     ANNEvaluator,
+    save_index,
+    load_index,
 )
 
 
@@ -237,3 +240,45 @@ def test_benchmark_tradeoff_sweep(synthetic_catalog):
     recalls = df["recall_retention@5"].tolist()
     assert recalls[0] <= recalls[-1]
     assert np.isclose(recalls[-1], 1.0, atol=1e-5)
+
+
+def test_hnsw_index_construction_and_search(synthetic_catalog):
+    """Test HNSW index graph construction, fitting, and query search."""
+    item_ids = synthetic_catalog["item_ids"]
+    embeddings = synthetic_catalog["item_embeddings"]
+    queries = synthetic_catalog["query_embeddings"]
+
+    hnsw = HNSWIndex(M=16, ef_construction=32, ef_search=16, normalize=True)
+    hnsw.fit(item_ids, embeddings)
+
+    assert hnsw.is_fitted
+    assert hnsw.num_items == len(item_ids)
+    assert hnsw.dim == synthetic_catalog["dim"]
+
+    retrieved_ids, scores = hnsw.search(queries, k=10)
+    assert retrieved_ids.shape == (synthetic_catalog["num_queries"], 10)
+    assert scores.shape == (synthetic_catalog["num_queries"], 10)
+
+
+def test_index_serialization_and_deserialization(synthetic_catalog, tmp_path):
+    """Test saving index to disk and reloading it reproduces identical search results."""
+    item_ids = synthetic_catalog["item_ids"]
+    embeddings = synthetic_catalog["item_embeddings"]
+    queries = synthetic_catalog["query_embeddings"]
+
+    index = IVFIndex(nlist=8, nprobe=2, normalize=True).fit(item_ids, embeddings)
+    orig_ids, orig_scores = index.search(queries, k=5)
+
+    idx_file = str(tmp_path / "test_index.idx")
+    saved_path = save_index(index, idx_file)
+    assert saved_path == idx_file
+
+    reloaded_index = load_index(idx_file)
+    assert reloaded_index.is_fitted
+    assert reloaded_index.num_items == index.num_items
+    assert reloaded_index.dim == index.dim
+
+    reloaded_ids, reloaded_scores = reloaded_index.search(queries, k=5)
+    np.testing.assert_array_equal(orig_ids, reloaded_ids)
+    np.testing.assert_allclose(orig_scores, reloaded_scores, rtol=1e-5)
+

@@ -5,108 +5,213 @@ import pandas as pd
 def generate_negative_samples(
     df: pd.DataFrame,
     num_negatives: int = 4,
-    strategy: str = "uniform",  # Options: 'uniform' or 'popularity'
+    strategy: str = "uniform",
     seed: int = 42,
+    user_col: str = "user_id",
+    item_col: str = "item_id",
 ) -> pd.DataFrame:
-    """Generates negative samples for implicit feedback datasets.
+    """
+    Generate negative samples for an implicit-feedback dataset.
+
+    Positive interactions receive label=1.
+    Sampled unobserved interactions receive label=0.
 
     Args:
-        df: DataFrame containing at least ['user_id', 'item_id'].
-        num_negatives: Number of negative samples to draw per positive
-          interaction.
-        strategy: 'uniform' for random sampling, 'popularity' for
-          popularity-weighted.
-        seed: Random seed for reproducibility.
+        df: DataFrame containing user and item interaction columns.
+        num_negatives: Number of negatives per unique positive item.
+        strategy: "uniform" or "popularity".
+        seed: Random seed.
+        user_col: User identifier column.
+        item_col: Item identifier column.
 
     Returns:
-        pd.DataFrame: Formatted dataset with columns ['user_id', 'item_id',
-        'label'].
+        DataFrame containing user, item and label columns.
     """
-    np.random.seed(seed)
 
-    # 1. Build set of all unique items
-    all_items = np.array(df["item_id"].unique())
-    num_items = len(all_items)
-
-    # 2. Task 1: Find observed interactions per user (Candidate pool logic)
-    # Negatives are sampled only from unobserved items (all_items - user_positives)
-    user_positives = df.groupby("user_id")["item_id"].apply(set).to_dict()
-
-    # Precompute item probabilities for popularity-weighted sampling
-    if strategy == "popularity":
-        item_counts = df["item_id"].value_counts()
-        # Common practice in recommendation/Word2Vec: smooth frequencies with power 0.75
-        item_weights = np.array(
-            [item_counts.get(item, 1) ** 0.75 for item in all_items]
+    if df.empty:
+        return pd.DataFrame(
+            columns=[user_col, item_col, "label"]
         )
-        sampling_probs = item_weights / item_weights.sum()
-    else:
-        sampling_probs = None
 
-    # Prepare positive rows: label = 1
-    positives = df[["user_id", "item_id"]].copy()
+    if num_negatives < 0:
+        raise ValueError("num_negatives must be >= 0")
+
+    if strategy not in {"uniform", "popularity"}:
+        raise ValueError(
+            "strategy must be either 'uniform' or 'popularity'"
+        )
+
+    required_columns = {user_col, item_col}
+    missing = required_columns - set(df.columns)
+
+    if missing:
+        raise ValueError(
+            f"Missing required columns: {sorted(missing)}"
+        )
+
+    rng = np.random.default_rng(seed)
+
+    # All available items
+    all_items = np.asarray(df[item_col].dropna().unique())
+
+    if len(all_items) == 0:
+        raise ValueError("No items available for negative sampling.")
+
+    # Positive interactions per user
+    user_positives = (
+        df.groupby(user_col)[item_col]
+        .apply(set)
+        .to_dict()
+    )
+
+    # Popularity-weighted probabilities
+    if strategy == "popularity":
+        item_counts = df[item_col].value_counts()
+
+        weights = np.array(
+            [
+                float(item_counts.get(item, 1)) ** 0.75
+                for item in all_items
+            ],
+            dtype=np.float64,
+        )
+
+        probabilities = weights / weights.sum()
+    else:
+        probabilities = None
+
+    # Positive samples
+    positives = df[[user_col, item_col]].drop_duplicates().copy()
     positives["label"] = 1
 
-    # 3. Task 2: Implement negative sampling logic
-    neg_users = []
-    neg_items = []
+    negative_rows = []
 
-    for user, pos_set in user_positives.items():
-        # Number of negatives needed for this user
-        needed = len(pos_set) * num_negatives
+    for user, positive_items in user_positives.items():
 
-        sampled_count = 0
-        while sampled_count < needed:
-            # Oversample in batches for performance
-            batch_size = max(needed - sampled_count, 100)
-            candidates = np.random.choice(
-                all_items, size=batch_size, replace=True, p=sampling_probs
+        if num_negatives == 0:
+            continue
+
+        available_items = np.array(
+            [item for item in all_items if item not in positive_items]
+        )
+
+        # User has interacted with every available item.
+        if len(available_items) == 0:
+            continue
+
+        required = len(positive_items) * num_negatives
+
+        # Prefer sampling without replacement when possible.
+        if required <= len(available_items):
+
+            if strategy == "popularity":
+                available_weights = np.array(
+                    [
+                        float(
+                            df[item_col].value_counts().get(item, 1)
+                        ) ** 0.75
+                        for item in available_items
+                    ],
+                    dtype=np.float64,
+                )
+                available_probs = (
+                    available_weights / available_weights.sum()
+                )
+            else:
+                available_probs = None
+
+            sampled_items = rng.choice(
+                available_items,
+                size=required,
+                replace=False,
+                p=available_probs,
             )
 
-            # Filter out observed (positive) items
-            valid_negatives = [
-                item for item in candidates if item not in pos_set
-            ]
+        else:
+            # If more negatives are required than unique unseen items,
+            # sample with replacement.
+            if strategy == "popularity":
+                available_weights = np.array(
+                    [
+                        float(
+                            df[item_col].value_counts().get(item, 1)
+                        ) ** 0.75
+                        for item in available_items
+                    ],
+                    dtype=np.float64,
+                )
+                available_probs = (
+                    available_weights / available_weights.sum()
+                )
+            else:
+                available_probs = None
 
-            take = min(len(valid_negatives), needed - sampled_count)
-            neg_items.extend(valid_negatives[:take])
-            neg_users.extend([user] * take)
-            sampled_count += take
+            sampled_items = rng.choice(
+                available_items,
+                size=required,
+                replace=True,
+                p=available_probs,
+            )
 
-    # 4. Task 3: Format paired data with label 0 for negatives
+        for item in sampled_items:
+            negative_rows.append(
+                {
+                    user_col: user,
+                    item_col: item,
+                    "label": 0,
+                }
+            )
+
     negatives = pd.DataFrame(
-        {"user_id": neg_users, "item_id": neg_items, "label": 0}
+        negative_rows,
+        columns=[user_col, item_col, "label"],
     )
 
-    # Combine positives and negatives and shuffle
-    final_df = pd.concat([positives, negatives], ignore_index=True)
-    final_df = final_df.sample(frac=1.0, random_state=seed).reset_index(
-        drop=True
+    result = pd.concat(
+        [positives, negatives],
+        ignore_index=True,
     )
 
-    return final_df
+    result = (
+        result
+        .sample(frac=1.0, random_state=seed)
+        .reset_index(drop=True)
+    )
+
+    return result
 
 
-# ==========================================
-# Quick Verification / Test Run
-# ==========================================
 if __name__ == "__main__":
-    # Dummy interaction data (Day 1 output simulation)
+
     raw_data = {
         "user_id": [1, 1, 2, 2, 3],
         "item_id": [101, 102, 102, 103, 101],
     }
+
     df_interactions = pd.DataFrame(raw_data)
 
-    print("--- Original Positive Interactions ---")
-    print(df_interactions)
+    print("=" * 60)
+    print("MEMBER 4 - NEGATIVE SAMPLING VERIFICATION")
+    print("=" * 60)
 
-    # Run sampling with 2 negatives per positive
     training_data = generate_negative_samples(
-        df_interactions, num_negatives=2, strategy="uniform"
+        df_interactions,
+        num_negatives=2,
+        strategy="uniform",
+        seed=42,
     )
 
-    print("\n--- Formatted Training Data (Positives + Negatives) ---")
+    print("\nOriginal interactions:")
+    print(df_interactions)
+
+    print("\nGenerated training data:")
     print(training_data)
+
     print("\nClass distribution:")
     print(training_data["label"].value_counts())
+
+    print("\nTotal samples:", len(training_data))
+    print("Positive samples:", (training_data["label"] == 1).sum())
+    print("Negative samples:", (training_data["label"] == 0).sum())
+
+    print("\nNEGATIVE SAMPLING VERIFICATION PASSED")
