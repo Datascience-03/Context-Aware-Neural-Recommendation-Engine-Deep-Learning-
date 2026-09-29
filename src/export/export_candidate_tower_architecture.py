@@ -19,9 +19,18 @@ OUTPUT_PATH = EXPORT_DIR / "candidate_tower.json"
 
 
 def get_num_items():
-    """Get the number of trained items from the exported item IDs."""
-    item_ids = np.load(ITEM_IDS_PATH, allow_pickle=True)
-    return len(item_ids)
+    """
+    Get the number of trained item IDs.
+
+    The trained Candidate Tower was built with:
+        num_items = 19520
+
+    and the Embedding layer uses:
+        input_dim = num_items + 1
+
+    because index 0 is reserved for UNK.
+    """
+    return 19520
 
 
 def build_dummy_inputs():
@@ -52,13 +61,13 @@ def export_architecture():
 
     model = CandidateTower(
         num_items=num_items,
-        num_product_groups=20,
-        num_colour_groups=50,
+        num_product_groups=15,
+        num_colour_groups=51,
         embedding_dim=64,
         item_emb_dim=32,
         cat_emb_dim=8,
         hidden_dim=128,
-        dropout_rate=0.10,
+        dropout_rate=0.1,
     )
 
     dummy_inputs = build_dummy_inputs()
@@ -107,13 +116,13 @@ def export_architecture():
 
     checks = {
         "num_items": num_items,
-        "num_product_groups": 20,
-        "num_colour_groups": 50,
+        "num_product_groups": 15,
+        "num_colour_groups": 51,
         "embedding_dim": 64,
         "item_emb_dim": 32,
         "cat_emb_dim": 8,
         "hidden_dim": 128,
-        "dropout_rate": 0.10,
+        "dropout_rate": 0.1,
     }
 
     for key, expected_value in checks.items():

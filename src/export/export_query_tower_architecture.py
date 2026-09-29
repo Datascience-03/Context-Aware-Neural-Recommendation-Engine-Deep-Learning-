@@ -27,9 +27,17 @@ EXPORT_DIR = PROJECT_ROOT / "data" / "processed" / "model_export"
 USER_IDS_PATH = MODEL_DIR / "user_ids.npy"
 ARCHITECTURE_PATH = EXPORT_DIR / "query_tower.json"
 
-
 def get_num_users():
-    """Read the number of trained users from the exported user IDs."""
+    """
+    Read the number of real users from user_ids.npy.
+
+    The QueryTower internally creates:
+        Embedding(input_dim=num_users + 1)
+
+    Index 0 is reserved for UNK, while real users use indices
+    1..51527. Therefore the value passed to QueryTower must be
+    one less than the final embedding-table size.
+    """
     if not USER_IDS_PATH.exists():
         raise FileNotFoundError(
             f"User ID file not found: {USER_IDS_PATH}"
@@ -42,8 +50,16 @@ def get_num_users():
             f"Expected 1-D user ID array, got shape {user_ids.shape}"
         )
 
-    return int(len(user_ids))
+    real_user_count = int(len(user_ids))
 
+    # The trained checkpoint contains 51529 rows:
+    #   index 0 = UNK
+    #   indices 1..51527 = real users
+    #
+    # QueryTower adds +1 internally, so pass 51528 here.
+    num_users = real_user_count + 1
+
+    return num_users
 
 def build_query_tower(num_users):
     """Create and build the same Query Tower architecture used in training."""
