@@ -464,7 +464,11 @@ if __name__ == "__main__":
     print(f"    Final Top-1 Accuracy  : {final_acc:.4f}")
 
     print("\n[6] Exporting user & item embeddings...")
-    # Unique user / item feature snapshots (last occurrence per user/item)
+# Unique user / item feature snapshots (first occurrence per user/item)
+    user_feat_df = df_all.drop_duplicates(subset="customer_id_idx") \
+                     .sort_values("customer_id_idx").reset_index(drop=True)
+    item_feat_df = df_all.drop_duplicates(subset="article_id_idx") \
+                     .sort_values("article_id_idx").reset_index(drop=True)
     user_feat_df = df_all.drop_duplicates(subset="customer_id_idx") \
                          .sort_values("customer_id_idx").reset_index(drop=True)
     item_feat_df = df_all.drop_duplicates(subset="article_id_idx") \
