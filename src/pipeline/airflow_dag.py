@@ -731,3 +731,33 @@ if __name__ == "__main__":
     print("\n" + "=" * 70)
     print("Day 7 Airflow DAG demo completed!")
     print("=" * 70 + "\n")
+# ---------------------------------------------------------------------------
+# MEMBER 3 — WEEKLY MODEL RETRAINING DAG
+# ---------------------------------------------------------------------------
+
+if AIRFLOW_AVAILABLE:
+    with DAG(
+        dag_id="weekly_model_retraining",
+        default_args=_DEFAULT_ARGS,
+        description=(
+            "Weekly Two-Tower recommendation model retraining: "
+            "extract features → train model."
+        ),
+        schedule="@weekly",
+        start_date=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        catchup=False,
+        max_active_runs=1,
+        tags=["recommendation", "model-training", "weekly"],
+    ) as weekly_model_retraining_dag:
+
+        weekly_extract_features = PythonOperator(
+            task_id="weekly_extract_features",
+            python_callable=task_extract_features,
+        )
+
+        weekly_train_model = PythonOperator(
+            task_id="weekly_train_model",
+            python_callable=task_train_model,
+        )
+
+        weekly_extract_features >> weekly_train_model
