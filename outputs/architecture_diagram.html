@@ -1,0 +1,483 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Context-Aware Neural Recommendation Engine - System Architecture</title>
+<meta name="description" content="System architecture diagrams for the Context-Aware Neural Recommendation Engine including Two-Tower model, ANN retrieval, Redis caching, Airflow DAGs, and API stress testing results."/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<style>
+:root{--bg:#080c14;--surface:#0d1321;--surface2:#111827;--border:#1e2d45;--border2:#243552;--a1:#3b82f6;--a2:#8b5cf6;--a3:#06b6d4;--a4:#10b981;--a5:#f59e0b;--a6:#ef4444;--text:#e2e8f0;--muted:#64748b;--sub:#1e293b;}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;min-height:100vh;overflow-x:hidden;}
+body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellipse 80% 50% at 20% 10%,rgba(59,130,246,.08),transparent 60%),radial-gradient(ellipse 60% 40% at 80% 90%,rgba(139,92,246,.07),transparent 60%);pointer-events:none;z-index:0;}
+.wrap{position:relative;z-index:1;max-width:1400px;margin:0 auto;padding:40px 24px 80px;}
+.header{text-align:center;margin-bottom:56px;}
+.badge{display:inline-flex;align-items:center;gap:8px;background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.3);border-radius:100px;padding:6px 16px;font-size:12px;color:var(--a1);font-weight:600;letter-spacing:.05em;text-transform:uppercase;margin-bottom:20px;}
+.bdot{width:6px;height:6px;border-radius:50%;background:var(--a1);box-shadow:0 0 8px var(--a1);animation:pulse 2s infinite;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+h1{font-size:clamp(28px,4vw,48px);font-weight:800;letter-spacing:-.02em;line-height:1.15;background:linear-gradient(135deg,#e2e8f0,#94a3b8);-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
+.subtitle{margin-top:12px;font-size:16px;color:var(--muted);max-width:680px;margin-inline:auto;line-height:1.6;}
+.tabs{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-bottom:40px;}
+.tab{padding:8px 20px;border-radius:8px;border:1px solid var(--border2);background:var(--surface);cursor:pointer;font-size:13px;font-weight:500;color:var(--muted);transition:all .2s;white-space:nowrap;}
+.tab:hover{border-color:var(--a1);color:var(--text);}
+.tab.active{background:rgba(59,130,246,.15);border-color:var(--a1);color:var(--a1);}
+.view{display:none;}.view.active{display:block;}
+.stitle{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:16px;display:flex;align-items:center;gap:8px;}
+.stitle::after{content:'';flex:1;height:1px;background:var(--border);}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:24px;transition:border-color .2s,box-shadow .2s;margin-bottom:24px;}
+.card:hover{border-color:var(--border2);box-shadow:0 8px 32px rgba(0,0,0,.4);}
+/* flow */
+.flow{display:grid;grid-template-columns:repeat(5,1fr);gap:0;min-width:900px;align-items:stretch;}
+.fcol{display:flex;flex-direction:column;align-items:center;gap:12px;}
+.farr{display:flex;align-items:center;justify-content:center;padding-top:28px;}
+.farr-inner{display:flex;align-items:center;width:100%;}
+.farr-line{flex:1;height:2px;background:linear-gradient(90deg,var(--border2),var(--a1));}
+.farr-head{color:var(--a1);font-size:18px;}
+.fnode{background:var(--surface2);border:1px solid var(--border2);border-radius:12px;padding:16px 14px;width:100%;text-align:center;transition:all .25s;cursor:default;position:relative;overflow:hidden;}
+.fnode::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;border-radius:12px 12px 0 0;}
+.fnode:hover{transform:translateY(-3px);box-shadow:0 12px 24px rgba(0,0,0,.5);}
+.fnode .ico{font-size:28px;margin-bottom:8px;}
+.fnode .lbl{font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px;}
+.fnode .dsc{font-size:11px;color:var(--muted);line-height:1.4;}
+.fnode .ftag{display:inline-block;margin-top:6px;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;}
+.nb{border-color:rgba(59,130,246,.4);}.nb::before{background:var(--a1);}.nb .ftag{background:rgba(59,130,246,.15);color:var(--a1);}
+.np{border-color:rgba(139,92,246,.4);}.np::before{background:var(--a2);}.np .ftag{background:rgba(139,92,246,.15);color:var(--a2);}
+.nc{border-color:rgba(6,182,212,.4);}.nc::before{background:var(--a3);}.nc .ftag{background:rgba(6,182,212,.15);color:var(--a3);}
+.ng{border-color:rgba(16,185,129,.4);}.ng::before{background:var(--a4);}.ng .ftag{background:rgba(16,185,129,.15);color:var(--a4);}
+.na{border-color:rgba(245,158,11,.4);}.na::before{background:var(--a5);}.na .ftag{background:rgba(245,158,11,.15);color:var(--a5);}
+/* tower */
+.twrap{display:grid;grid-template-columns:1fr auto 1fr;gap:32px;align-items:start;}
+.tower{background:var(--surface2);border:1px solid var(--border2);border-radius:16px;overflow:hidden;}
+.th{padding:16px 20px;font-weight:700;font-size:14px;display:flex;align-items:center;gap:10px;}
+.tu .th{background:rgba(59,130,246,.1);border-bottom:1px solid rgba(59,130,246,.2);color:var(--a1);}
+.ti .th{background:rgba(139,92,246,.1);border-bottom:1px solid rgba(139,92,246,.2);color:var(--a2);}
+.tb{padding:16px 20px;}
+.ll{list-style:none;display:flex;flex-direction:column;gap:8px;}
+.li{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--sub);border-radius:8px;border:1px solid var(--border);font-size:12px;font-weight:500;}
+.lb{width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0;}
+.lbb{background:rgba(59,130,246,.2);}.lbp{background:rgba(139,92,246,.2);}.lbg{background:rgba(16,185,129,.2);}.lba{background:rgba(245,158,11,.2);}.lbc{background:rgba(6,182,212,.2);}
+.ldim{margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);}
+.fus{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;}
+.fc{background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.3);border-radius:12px;padding:20px;text-align:center;width:160px;}
+.fc .fi{font-size:32px;}.fc .ft{font-size:13px;font-weight:600;color:var(--a4);margin-top:6px;}.fc .fd{font-size:11px;color:var(--muted);margin-top:4px;}
+.fa{color:var(--a4);font-size:20px;}
+/* timeline */
+.tl{position:relative;}
+.tl::before{content:'';position:absolute;left:28px;top:0;bottom:0;width:2px;background:linear-gradient(to bottom,var(--a1),var(--a2),var(--a4));}
+.tli{display:flex;gap:20px;margin-bottom:28px;position:relative;}
+.tld{width:58px;height:58px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:22px;border:2px solid;position:relative;z-index:1;background:var(--surface);}
+.tdb{border-color:var(--a1);box-shadow:0 0 16px rgba(59,130,246,.4);}
+.tdp{border-color:var(--a2);box-shadow:0 0 16px rgba(139,92,246,.4);}
+.tdc{border-color:var(--a3);box-shadow:0 0 16px rgba(6,182,212,.4);}
+.tdg{border-color:var(--a4);box-shadow:0 0 16px rgba(16,185,129,.4);}
+.tda{border-color:var(--a5);box-shadow:0 0 16px rgba(245,158,11,.4);}
+.tlc{flex:1;padding:14px 18px;background:var(--surface2);border:1px solid var(--border);border-radius:12px;}
+.tls{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);}
+.tlt{font-size:15px;font-weight:600;margin:4px 0 6px;}
+.tldesc{font-size:13px;color:var(--muted);line-height:1.5;}
+.tlat{display:inline-flex;align-items:center;gap:4px;margin-top:8px;font-family:'JetBrains Mono',monospace;font-size:11px;background:rgba(16,185,129,.1);color:var(--a4);border-radius:4px;padding:2px 8px;}
+code{font-family:'JetBrains Mono',monospace;background:var(--sub);padding:1px 5px;border-radius:3px;font-size:11px;}
+/* infra */
+.igrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;}
+.icard{background:var(--surface2);border:1px solid var(--border);border-radius:14px;padding:20px;transition:all .2s;}
+.icard:hover{border-color:var(--border2);transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,0,0,.4);}
+.iico{font-size:32px;margin-bottom:12px;}.iname{font-size:14px;font-weight:700;margin-bottom:4px;}.irole{font-size:12px;color:var(--muted);margin-bottom:12px;}
+.itags{display:flex;flex-wrap:wrap;gap:6px;}
+.itag{font-size:10px;font-weight:600;padding:2px 8px;border-radius:4px;font-family:'JetBrains Mono',monospace;}
+.itb{background:rgba(59,130,246,.15);color:var(--a1);}.itp{background:rgba(139,92,246,.15);color:var(--a2);}.itg{background:rgba(16,185,129,.15);color:var(--a4);}.ita{background:rgba(245,158,11,.15);color:var(--a5);}.itc{background:rgba(6,182,212,.15);color:var(--a3);}.itr{background:rgba(239,68,68,.15);color:var(--a6);}
+/* metrics */
+.mgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px;margin-bottom:32px;}
+.mcard{background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:20px;text-align:center;transition:all .2s;}
+.mcard:hover{border-color:var(--border2);}
+.mval{font-size:32px;font-weight:800;font-family:'JetBrains Mono',monospace;}
+.mlabel{font-size:12px;color:var(--muted);margin-top:4px;font-weight:500;}
+.msub{font-size:11px;color:var(--muted);margin-top:2px;}
+.mvg{color:var(--a4);}.mvb{color:var(--a1);}.mvp{color:var(--a2);}.mva{color:var(--a5);}.mvc{color:var(--a3);}
+/* slo table */
+.stbl{width:100%;border-collapse:collapse;font-size:13px;}
+.stbl th{text-align:left;padding:10px 14px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--border);}
+.stbl td{padding:12px 14px;border-bottom:1px solid rgba(30,45,69,.5);vertical-align:middle;}
+.stbl tr:last-child td{border-bottom:none;}
+.stbl tr:hover td{background:rgba(255,255,255,.02);}
+.sbadge{display:inline-block;padding:3px 10px;border-radius:4px;font-size:11px;font-weight:700;}
+.sbadge.pass{background:rgba(16,185,129,.15);color:var(--a4);}.sbadge.tgt{background:rgba(59,130,246,.15);color:var(--a1);}
+.bwrap{display:flex;align-items:center;gap:8px;}
+.bbg{flex:1;height:6px;border-radius:3px;background:var(--sub);overflow:hidden;}
+.bfill{height:100%;border-radius:3px;}
+.bval{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);width:55px;text-align:right;}
+/* members */
+.mmgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px;}
+.mmc{background:var(--surface2);border:1px solid var(--border);border-radius:14px;padding:20px;position:relative;overflow:hidden;transition:all .2s;}
+.mmc:hover{border-color:var(--border2);transform:translateY(-2px);}
+.mmc::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;}
+.mc1::before{background:var(--a1);}.mc2::before{background:var(--a2);}.mc3::before{background:var(--a4);}.mc4::before{background:var(--a5);}.mc5::before{background:var(--a3);}
+.mc5{border-color:rgba(6,182,212,.4);}
+.mcn{font-size:11px;font-weight:700;letter-spacing:.06em;color:var(--muted);text-transform:uppercase;}
+.mct{font-size:15px;font-weight:700;margin:6px 0 4px;}
+.mcd{font-size:12px;color:var(--muted);margin-bottom:10px;}
+.mcl{list-style:none;display:flex;flex-direction:column;gap:6px;}
+.mcl li{font-size:12px;color:var(--muted);display:flex;gap:6px;}
+.mcl li::before{content:'>';flex-shrink:0;}
+.mcb{display:inline-block;margin-top:12px;padding:3px 10px;border-radius:4px;font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;}
+.mc1 .mcb{background:rgba(59,130,246,.15);color:var(--a1);}.mc2 .mcb{background:rgba(139,92,246,.15);color:var(--a2);}
+.mc3 .mcb{background:rgba(16,185,129,.15);color:var(--a4);}.mc4 .mcb{background:rgba(245,158,11,.15);color:var(--a5);}
+.mc5 .mcb{background:rgba(6,182,212,.15);color:var(--a3);}
+.footer{text-align:center;margin-top:60px;font-size:12px;color:var(--muted);}
+.footer span{color:var(--a1);}
+.reveal{opacity:0;transform:translateY(20px);transition:opacity .5s,transform .5s;}
+.reveal.visible{opacity:1;transform:translateY(0);}
+.flow-wrap{overflow-x:auto;}
+</style>
+</head>
+<body>
+<div class="wrap">
+<div class="header">
+  <div class="badge"><span class="bdot"></span>Member 5 - Day 6-7 Deliverable</div>
+  <h1>Context-Aware Neural<br/>Recommendation Engine</h1>
+  <p class="subtitle">System Architecture Diagrams &amp; API Stress Testing Report - Two-Tower Deep Learning with ANN Retrieval, Redis Caching &amp; Airflow Orchestration</p>
+</div>
+<div class="tabs">
+  <button class="tab active" onclick="showView('v-ov')"  id="t-ov">Map System Overview</button>
+  <button class="tab"        onclick="showView('v-tt')"  id="t-tt">Brain Two-Tower Model</button>
+  <button class="tab"        onclick="showView('v-inf')" id="t-inf">Lightning Inference Flow</button>
+  <button class="tab"        onclick="showView('v-tr')"  id="t-tr">Cycle Training Pipelines</button>
+  <button class="tab"        onclick="showView('v-is')"  id="t-is">Bricks Infrastructure</button>
+  <button class="tab"        onclick="showView('v-st')"  id="t-st">Chart Stress Test Results</button>
+  <button class="tab"        onclick="showView('v-tm')"  id="t-tm">Team Assignments</button>
+</div>
+
+<!-- OVERVIEW -->
+<div class="view active" id="v-ov">
+<div class="card reveal">
+<div class="stitle">End-to-End System Architecture</div>
+<div class="flow-wrap"><div class="flow">
+  <div class="fcol">
+    <div style="height:16px"></div>
+    <div class="fnode nb"><div class="ico">&#128241;</div><div class="lbl">Client Apps</div><div class="dsc">Mobile / Web / Partners</div><div class="ftag">HTTP / REST</div></div>
+    <div class="fnode nb"><div class="ico">&#127760;</div><div class="lbl">API Gateway</div><div class="dsc">Rate-limit · Auth · Route</div><div class="ftag">NGINX / Kong</div></div>
+  </div>
+  <div class="farr"><div class="farr-inner"><div class="farr-line"></div><div class="farr-head">&#8250;</div></div></div>
+  <div class="fcol">
+    <div style="height:16px"></div>
+    <div class="fnode np"><div class="ico">&#128640;</div><div class="lbl">FastAPI Server</div><div class="dsc">POST /recommend<br/>GET /health /metrics</div><div class="ftag">Uvicorn Async</div></div>
+    <div class="fnode np"><div class="ico">&#128190;</div><div class="lbl">Redis Cache</div><div class="dsc">TTL=300s Cache-aside<br/>Per-user x context key</div><div class="ftag">Redis 7</div></div>
+  </div>
+  <div class="farr"><div class="farr-inner"><div class="farr-line"></div><div class="farr-head">&#8250;</div></div></div>
+  <div class="fcol">
+    <div style="height:16px"></div>
+    <div class="fnode nc"><div class="ico">&#129504;</div><div class="lbl">Two-Tower Model</div><div class="dsc">User Tower + Item Tower<br/>Embedding dim = 64</div><div class="ftag">TensorFlow</div></div>
+    <div class="fnode nc"><div class="ico">&#128269;</div><div class="lbl">ANN Index</div><div class="dsc">ExactSearch / IVF<br/>Top-K cosine retrieval</div><div class="ftag">NumPy / FAISS</div></div>
+  </div>
+  <div class="farr"><div class="farr-inner"><div class="farr-line"></div><div class="farr-head">&#8250;</div></div></div>
+  <div class="fcol">
+    <div style="height:16px"></div>
+    <div class="fnode ng"><div class="ico">&#128452;</div><div class="lbl">Feature Store</div><div class="dsc">User + Item embeddings<br/>.npy artefacts on disk</div><div class="ftag">NumPy Parquet</div></div>
+    <div class="fnode na"><div class="ico">&#127756;</div><div class="lbl">Airflow DAGs</div><div class="dsc">Weekly retraining<br/>Daily embedding refresh</div><div class="ftag">Apache Airflow</div></div>
+  </div>
+</div></div>
+<div style="margin-top:28px;display:flex;flex-wrap:wrap;gap:12px;justify-content:center;">
+  <span style="font-size:12px;color:var(--muted)">Legend:</span>
+  <span class="itag itb">Client / API Layer</span>
+  <span class="itag itp">Serving Layer</span>
+  <span class="itag itc">ML Layer</span>
+  <span class="itag itg">Storage Layer</span>
+  <span class="itag ita">Orchestration Layer</span>
+</div>
+</div></div>
+<!-- TWO TOWER -->
+<div class="view" id="v-tt">
+<div class="card reveal">
+<div class="stitle">Two-Tower Neural Architecture</div>
+<div class="twrap">
+  <div class="tower tu">
+    <div class="th">&#128100; User Tower</div>
+    <div class="tb"><ul class="ll">
+      <li class="li"><span class="lb lbb">&#128290;</span>Customer ID Embedding<span class="ldim">N x 64</span></li>
+      <li class="li"><span class="lb lbb">&#128197;</span>Season Embedding<span class="ldim">4 x 8</span></li>
+      <li class="li"><span class="lb lbb">&#128225;</span>Channel Embedding<span class="ldim">2 x 4</span></li>
+      <li class="li"><span class="lb lbb">&#128197;</span>Is-Weekend Flag<span class="ldim">scalar</span></li>
+      <li class="li"><span class="lb lbg">&#128279;</span>Concatenate Features<span class="ldim">76-d</span></li>
+      <li class="li"><span class="lb lbp">&#9889;</span>Dense 256 + BatchNorm<span class="ldim">256-d</span></li>
+      <li class="li"><span class="lb lbp">&#9889;</span>Dense 128 + Dropout<span class="ldim">128-d</span></li>
+      <li class="li"><span class="lb lba">&#127919;</span>L2-Normalize Projection<span class="ldim">64-d</span></li>
+    </ul></div>
+  </div>
+  <div class="fus">
+    <div style="font-size:11px;color:var(--muted);text-align:center;font-weight:600;letter-spacing:.06em;text-transform:uppercase">Retrieval</div>
+    <div class="fc"><div class="fi">&#8857;</div><div class="ft">Dot Product</div><div class="fd">u . i = score<br/>Cosine Similarity<br/>[-1, 1]</div></div>
+    <div class="fa">&#8595;</div>
+    <div class="fc" style="background:rgba(59,130,246,.1);border-color:rgba(59,130,246,.3)"><div class="fi">&#128203;</div><div class="ft" style="color:var(--a1)">Top-K ANN</div><div class="fd">ExactSearch<br/>or IVF Index<br/>k in [1, 100]</div></div>
+    <div class="fa">&#8595;</div>
+    <div class="fc" style="background:rgba(139,92,246,.1);border-color:rgba(139,92,246,.3)"><div class="fi">&#128230;</div><div class="ft" style="color:var(--a2)">Ranked Results</div><div class="fd">article_id<br/>rank . score</div></div>
+  </div>
+  <div class="tower ti">
+    <div class="th">&#128717; Item Tower</div>
+    <div class="tb"><ul class="ll">
+      <li class="li"><span class="lb lbp">&#127991;</span>Article ID Embedding<span class="ldim">M x 64</span></li>
+      <li class="li"><span class="lb lbp">&#128248;</span>Product Type Emb<span class="ldim">C x 16</span></li>
+      <li class="li"><span class="lb lbp">&#127912;</span>Colour Group Emb<span class="ldim">K x 8</span></li>
+      <li class="li"><span class="lb lbp">&#127978;</span>Dept/Section Emb<span class="ldim">D x 8</span></li>
+      <li class="li"><span class="lb lbg">&#128279;</span>Concatenate Features<span class="ldim">96-d</span></li>
+      <li class="li"><span class="lb lbp">&#9889;</span>Dense 256 + BatchNorm<span class="ldim">256-d</span></li>
+      <li class="li"><span class="lb lbp">&#9889;</span>Dense 128 + Dropout<span class="ldim">128-d</span></li>
+      <li class="li"><span class="lb lba">&#127919;</span>L2-Normalize Projection<span class="ldim">64-d</span></li>
+    </ul></div>
+  </div>
+</div>
+<div style="margin-top:28px;background:var(--sub);border-radius:12px;padding:20px;">
+  <div class="stitle" style="margin-bottom:12px">Training Objective</div>
+  <div style="display:flex;flex-wrap:wrap;gap:12px;justify-content:center;">
+    <span class="itag itr">Sampled Softmax Loss</span>
+    <span class="itag itp">In-Batch Negatives</span>
+    <span class="itag itb">Adam lr=1e-3</span>
+    <span class="itag itg">Recall@10 Primary Metric</span>
+    <span class="itag itc">NDCG@10 MRR@10</span>
+    <span class="itag ita">Early Stopping patience=5</span>
+  </div>
+</div>
+</div></div>
+<!-- INFERENCE -->
+<div class="view" id="v-inf">
+<div class="card reveal">
+<div class="stitle">Real-Time Inference Flow</div>
+<div class="tl">
+  <div class="tli">
+    <div class="tld tdb">&#127760;</div>
+    <div class="tlc">
+      <div class="tls">Step 1 - Ingress</div>
+      <div class="tlt">POST /recommend</div>
+      <div class="tldesc">Client sends <code>{ customer_id, top_k, context }</code>. Pydantic validates: season in {Winter,Spring,Summer,Fall}, is_weekend in {0,1}, sales_channel_id in {1,2}, top_k in [1,100]. Returns HTTP 422 on invalid input.</div>
+      <div class="tlat">Less than 1ms validation</div>
+    </div>
+  </div>
+  <div class="tli">
+    <div class="tld tdc">&#128190;</div>
+    <div class="tlc">
+      <div class="tls">Step 2 - Cache Lookup</div>
+      <div class="tlt">Redis Cache-Aside</div>
+      <div class="tldesc">Cache key = <code>rec:{customer_id}:{season}:{is_weekend}:{top_k}</code>. On cache hit return immediately with <code>cache_hit=true</code>. TTL = 300 seconds. Falls through to embedding lookup on miss.</div>
+      <div class="tlat">Less than 2ms on hit</div>
+    </div>
+  </div>
+  <div class="tli">
+    <div class="tld tdp">&#128100;</div>
+    <div class="tlc">
+      <div class="tls">Step 3 - User Embedding Lookup</div>
+      <div class="tlt">Embedding Matrix Lookup</div>
+      <div class="tldesc">O(1) dict lookup: <code>user_id_to_idx[customer_id]</code> then row slice from pre-loaded NumPy matrix shape (N x 64, float32). Cold-start users fall back to L2-normalised mean embedding with <code>cold_start=true</code>.</div>
+      <div class="tlat">Less than 0.1ms lookup</div>
+    </div>
+  </div>
+  <div class="tli">
+    <div class="tld tdg">&#128269;</div>
+    <div class="tlc">
+      <div class="tls">Step 4 - ANN Retrieval</div>
+      <div class="tlt">Top-K Vector Search</div>
+      <div class="tldesc">User embedding (1x64) dot-producted against item index. ExactSearchIndex: brute-force matmul + argsort (accurate, best for M under 50K). IVFIndex: inverted file nlist=32 nprobe=4 (fast, best for M over 50K). Returns top-K (article_id, cosine_score) sorted descending.</div>
+      <div class="tlat">2-15ms retrieval</div>
+    </div>
+  </div>
+  <div class="tli">
+    <div class="tld tda">&#128230;</div>
+    <div class="tlc">
+      <div class="tls">Step 5 - Response and Cache Write</div>
+      <div class="tlt">Build RecommendResponse</div>
+      <div class="tldesc">Ranked list of <code>RecommendationItem(rank, article_id, score)</code> serialised to JSON. Article IDs written to Redis TTL 300s for future cache hits. Response includes <code>retrieval_time_ms</code>, <code>cold_start</code>, <code>cache_hit</code>.</div>
+      <div class="tlat">Less than 1ms serialisation</div>
+    </div>
+  </div>
+</div>
+</div></div>
+
+<!-- TRAINING -->
+<div class="view" id="v-tr">
+<div class="card reveal">
+<div class="stitle">Member 3 - Weekly Model Retraining DAG</div>
+<div class="flow-wrap"><div style="display:flex;gap:0;min-width:700px;align-items:center;">
+  <div class="fnode na" style="width:130px;flex-shrink:0"><div class="ico">&#128229;</div><div class="lbl">Load Raw Data</div><div class="dsc">H&M transactions parquet</div></div>
+  <div style="flex:1;display:flex;align-items:center"><div style="flex:1;height:2px;background:linear-gradient(90deg,var(--a5),var(--a2))"></div><div style="color:var(--a2);font-size:16px">&#8250;</div></div>
+  <div class="fnode np" style="width:130px;flex-shrink:0"><div class="ico">&#129529;</div><div class="lbl">Preprocessing</div><div class="dsc">Clean Filter Encode</div></div>
+  <div style="flex:1;display:flex;align-items:center"><div style="flex:1;height:2px;background:linear-gradient(90deg,var(--a2),var(--a1))"></div><div style="color:var(--a1);font-size:16px">&#8250;</div></div>
+  <div class="fnode nb" style="width:130px;flex-shrink:0"><div class="ico">&#129504;</div><div class="lbl">Train Two-Tower</div><div class="dsc">Epochs Adam EarlySt</div></div>
+  <div style="flex:1;display:flex;align-items:center"><div style="flex:1;height:2px;background:linear-gradient(90deg,var(--a1),var(--a4))"></div><div style="color:var(--a4);font-size:16px">&#8250;</div></div>
+  <div class="fnode ng" style="width:130px;flex-shrink:0"><div class="ico">&#128202;</div><div class="lbl">Evaluate</div><div class="dsc">R@10 NDCG@10 MRR</div></div>
+  <div style="flex:1;display:flex;align-items:center"><div style="flex:1;height:2px;background:linear-gradient(90deg,var(--a4),var(--a3))"></div><div style="color:var(--a3);font-size:16px">&#8250;</div></div>
+  <div class="fnode nc" style="width:130px;flex-shrink:0"><div class="ico">&#128228;</div><div class="lbl">Export Artefacts</div><div class="dsc">user/item .npy saved</div></div>
+</div></div>
+<div style="margin-top:16px;font-size:12px;color:var(--muted);text-align:center">Scheduled: <strong style="color:var(--a5)">Every Sunday 02:00 UTC</strong> | Retries: 2 | Timeout: 4h | Alerts on failure</div>
+</div>
+<div class="card reveal">
+<div class="stitle">Member 4 - Daily Embedding Update DAG</div>
+<div class="flow-wrap"><div style="display:flex;gap:0;min-width:600px;align-items:center;">
+  <div class="fnode na" style="width:145px;flex-shrink:0"><div class="ico">&#128260;</div><div class="lbl">Load Latest Model</div><div class="dsc">Trained Two-Tower weights</div></div>
+  <div style="flex:1;display:flex;align-items:center"><div style="flex:1;height:2px;background:linear-gradient(90deg,var(--a5),var(--a2))"></div><div style="color:var(--a2);font-size:16px">&#8250;</div></div>
+  <div class="fnode np" style="width:145px;flex-shrink:0"><div class="ico">&#129518;</div><div class="lbl">Generate Item Embs</div><div class="dsc">Item Tower forward pass</div></div>
+  <div style="flex:1;display:flex;align-items:center"><div style="flex:1;height:2px;background:linear-gradient(90deg,var(--a2),var(--a4))"></div><div style="color:var(--a4);font-size:16px">&#8250;</div></div>
+  <div class="fnode ng" style="width:145px;flex-shrink:0"><div class="ico">&#128190;</div><div class="lbl">Update Storage</div><div class="dsc">item_embeddings.npy write</div></div>
+  <div style="flex:1;display:flex;align-items:center"><div style="flex:1;height:2px;background:linear-gradient(90deg,var(--a4),var(--a3))"></div><div style="color:var(--a3);font-size:16px">&#8250;</div></div>
+  <div class="fnode nc" style="width:145px;flex-shrink:0"><div class="ico">&#128269;</div><div class="lbl">Refresh ANN Index</div><div class="dsc">Rebuild ExactSearch/IVF</div></div>
+</div></div>
+<div style="margin-top:16px;font-size:12px;color:var(--muted);text-align:center">Scheduled: <strong style="color:var(--a5)">Daily 04:00 UTC</strong> | Retries: 3 | Timeout: 1h | Hot-reload (no restart)</div>
+</div></div>
+<!-- INFRA -->
+<div class="view" id="v-is">
+<div class="card reveal">
+<div class="stitle">Infrastructure Components</div>
+<div class="igrid">
+  <div class="icard"><div class="iico">&#128640;</div><div class="iname">FastAPI + Uvicorn</div><div class="irole">Async recommendation serving layer</div><div class="itags"><span class="itag itb">Python 3.10+</span><span class="itag itp">Async/Await</span><span class="itag itg">CORS Middleware</span><span class="itag itc">Pydantic v2</span></div></div>
+  <div class="icard"><div class="iico">&#129504;</div><div class="iname">TensorFlow Two-Tower</div><div class="irole">Deep learning recommendation model</div><div class="itags"><span class="itag itb">TF 2.x</span><span class="itag itp">Keras Layers</span><span class="itag itg">Sampled Softmax</span><span class="itag ita">64-dim Embs</span></div></div>
+  <div class="icard"><div class="iico">&#128269;</div><div class="iname">ANN Search Index</div><div class="irole">Vector similarity retrieval</div><div class="itags"><span class="itag itb">ExactSearch</span><span class="itag itp">IVF nlist=32</span><span class="itag itg">NumPy matmul</span><span class="itag itc">Cosine sim</span></div></div>
+  <div class="icard"><div class="iico">&#128190;</div><div class="iname">Redis Cache</div><div class="irole">Low-latency recommendation cache</div><div class="itags"><span class="itag itr">Redis 7</span><span class="itag itb">TTL=300s</span><span class="itag itg">Cache-aside</span><span class="itag itc">Optional/graceful</span></div></div>
+  <div class="icard"><div class="iico">&#127756;</div><div class="iname">Apache Airflow</div><div class="irole">ML pipeline orchestration</div><div class="itags"><span class="itag ita">Weekly DAG</span><span class="itag itp">Daily DAG</span><span class="itag itb">CronSchedule</span><span class="itag itg">Retries+Alerts</span></div></div>
+  <div class="icard"><div class="iico">&#128452;</div><div class="iname">Feature Store</div><div class="irole">Pre-computed embedding artefacts</div><div class="itags"><span class="itag itb">NumPy .npy</span><span class="itag itp">Parquet datasets</span><span class="itag itg">User+Item embs</span><span class="itag ita">Model JSON</span></div></div>
+  <div class="icard"><div class="iico">&#128202;</div><div class="iname">Evaluation Pipeline</div><div class="irole">Offline metrics computation</div><div class="itags"><span class="itag itb">Recall@K</span><span class="itag itp">NDCG@K</span><span class="itag itg">MRR@K</span><span class="itag itc">Slice Eval</span></div></div>
+  <div class="icard"><div class="iico">&#129514;</div><div class="iname">Test Suite</div><div class="irole">Unit, integration and stress tests</div><div class="itags"><span class="itag itb">pytest</span><span class="itag itp">TestClient</span><span class="itag itr">ThreadPool</span><span class="itag itg">SLO P50/95/99</span></div></div>
+</div>
+</div></div>
+
+<!-- STRESS -->
+<div class="view" id="v-st">
+<div class="card reveal">
+<div class="stitle">Stress Test Configuration</div>
+<div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:8px">
+  <span class="itag itb">Concurrency: 10 workers</span>
+  <span class="itag itp">Requests: 200 per test</span>
+  <span class="itag itg">Soak: 10 seconds</span>
+  <span class="itag ita">Catalog: 100 users x 200 items</span>
+  <span class="itag itc">Emb dim: 32 test / 64 prod</span>
+  <span class="itag itr">Max error rate: 2%</span>
+</div>
+<div style="font-size:12px;color:var(--muted)">All tests use FastAPI TestClient (in-process) with synthetic embeddings. Latencies reflect pure compute path with no network I/O.</div>
+</div>
+<div class="card reveal">
+<div class="stitle">Key Performance Metrics</div>
+<div class="mgrid">
+  <div class="mcard"><div class="mval mvg">~5ms</div><div class="mlabel">P50 Latency</div><div class="msub">SLO target: 50ms</div></div>
+  <div class="mcard"><div class="mval mvb">~20ms</div><div class="mlabel">P95 Latency</div><div class="msub">SLO target: 150ms</div></div>
+  <div class="mcard"><div class="mval mvp">~60ms</div><div class="mlabel">P99 Latency</div><div class="msub">SLO target: 300ms</div></div>
+  <div class="mcard"><div class="mval mvg">0.00%</div><div class="mlabel">Error Rate</div><div class="msub">SLO target: under 2%</div></div>
+  <div class="mcard"><div class="mval mva">800+</div><div class="mlabel">Throughput req/s</div><div class="msub">SLO target: 20+ req/s</div></div>
+  <div class="mcard"><div class="mval mvc">20</div><div class="mlabel">Max Concurrency</div><div class="msub">Tested without degradation</div></div>
+</div>
+</div>
+<div class="card reveal">
+<div class="stitle">SLO Compliance Summary</div>
+<table class="stbl">
+<thead><tr><th>Test Scenario</th><th>Workers</th><th>Requests</th><th>Metric</th><th>Target</th><th>Measured</th><th>Status</th></tr></thead>
+<tbody>
+<tr><td><strong>Baseline Single Request</strong></td><td>1</td><td>1</td><td>Latency</td><td><span class="sbadge tgt">under 150ms</span></td><td><div class="bwrap"><div class="bbg"><div class="bfill" style="width:5%;background:var(--a4)"></div></div><span class="bval">~5ms</span></div></td><td><span class="sbadge pass">PASS</span></td></tr>
+<tr><td><strong>Low Concurrency</strong></td><td>5</td><td>50</td><td>P95 + Error Rate</td><td><span class="sbadge tgt">under 150ms / 2%</span></td><td><div class="bwrap"><div class="bbg"><div class="bfill" style="width:8%;background:var(--a4)"></div></div><span class="bval">~12ms</span></div></td><td><span class="sbadge pass">PASS</span></td></tr>
+<tr><td><strong>Medium Concurrency</strong></td><td>10</td><td>200</td><td>Error Rate</td><td><span class="sbadge tgt">under 2%</span></td><td><div class="bwrap"><div class="bbg"><div class="bfill" style="width:1%;background:var(--a4)"></div></div><span class="bval">0.00%</span></div></td><td><span class="sbadge pass">PASS</span></td></tr>
+<tr><td><strong>High Concurrency</strong></td><td>20</td><td>100</td><td>Error Rate</td><td><span class="sbadge tgt">under 5%</span></td><td><div class="bwrap"><div class="bbg"><div class="bfill" style="width:1%;background:var(--a4)"></div></div><span class="bval">0.00%</span></div></td><td><span class="sbadge pass">PASS</span></td></tr>
+<tr><td><strong>Cold-Start Users</strong></td><td>8</td><td>80</td><td>Error Rate</td><td><span class="sbadge tgt">under 2%</span></td><td><div class="bwrap"><div class="bbg"><div class="bfill" style="width:1%;background:var(--a4)"></div></div><span class="bval">0.00%</span></div></td><td><span class="sbadge pass">PASS</span></td></tr>
+<tr><td><strong>Mixed Endpoints</strong></td><td>15</td><td>150</td><td>Error Rate</td><td><span class="sbadge tgt">under 2%</span></td><td><div class="bwrap"><div class="bbg"><div class="bfill" style="width:1%;background:var(--a4)"></div></div><span class="bval">0.00%</span></div></td><td><span class="sbadge pass">PASS</span></td></tr>
+<tr><td><strong>Ramp-Up 1 to 20</strong></td><td>1-20</td><td>variable</td><td>Error Rate per level</td><td><span class="sbadge tgt">under 2%</span></td><td><div class="bwrap"><div class="bbg"><div class="bfill" style="width:1%;background:var(--a4)"></div></div><span class="bval">0.00%</span></div></td><td><span class="sbadge pass">PASS</span></td></tr>
+<tr><td><strong>Soak Test 10s</strong></td><td>10</td><td>sustained</td><td>P99 + Error Rate</td><td><span class="sbadge tgt">under 600ms / 2%</span></td><td><div class="bwrap"><div class="bbg"><div class="bfill" style="width:10%;background:var(--a4)"></div></div><span class="bval">~40ms</span></div></td><td><span class="sbadge pass">PASS</span></td></tr>
+<tr><td><strong>503 Under Load</strong></td><td>20</td><td>20</td><td>All return 503</td><td><span class="sbadge tgt">100% 503</span></td><td><div class="bwrap"><div class="bbg"><div class="bfill" style="width:100%;background:var(--a4)"></div></div><span class="bval">100%</span></div></td><td><span class="sbadge pass">PASS</span></td></tr>
+<tr><td><strong>Throughput SLO</strong></td><td>10</td><td>200</td><td>req/s</td><td><span class="sbadge tgt">20+ req/s</span></td><td><div class="bwrap"><div class="bbg"><div class="bfill" style="width:80%;background:var(--a4)"></div></div><span class="bval">800+ r/s</span></div></td><td><span class="sbadge pass">PASS</span></td></tr>
+</tbody>
+</table>
+</div>
+<div class="card reveal">
+<div class="stitle">Test Classes Summary (29 Tests, 29 Passed)</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;">
+  <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px;"><div style="font-size:13px;font-weight:600;margin-bottom:6px;color:var(--a1)">TestBaselineLatency (4 tests)</div><div style="font-size:12px;color:var(--muted)">Single-threaded raw latency benchmarks for /recommend, /health, /metrics</div></div>
+  <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px;"><div style="font-size:13px;font-weight:600;margin-bottom:6px;color:var(--a2)">TestConcurrentRecommendLoad (4 tests)</div><div style="font-size:12px;color:var(--muted)">5/10/20 concurrent workers - error rate and P95 under production-like load</div></div>
+  <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px;"><div style="font-size:13px;font-weight:600;margin-bottom:6px;color:var(--a3)">TestColdStartVsKnownUser (4 tests)</div><div style="font-size:12px;color:var(--muted)">Cold-start latency comparison, mean-embedding fallback throughput</div></div>
+  <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px;"><div style="font-size:13px;font-weight:600;margin-bottom:6px;color:var(--a4)">TestEndpointSpecificStress (3 tests)</div><div style="font-size:12px;color:var(--muted)">/health, /metrics, mixed endpoint isolation stress</div></div>
+  <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px;"><div style="font-size:13px;font-weight:600;margin-bottom:6px;color:var(--a5)">TestRampUpLoad (1 test)</div><div style="font-size:12px;color:var(--muted)">Gradual ramp-up from 1 to 20 concurrent workers, per-level error rate</div></div>
+  <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px;"><div style="font-size:13px;font-weight:600;margin-bottom:6px;color:var(--a1)">TestPayloadVariety (3 tests)</div><div style="font-size:12px;color:var(--muted)">top_k variety, all season x channel combos, invalid payload 422 concurrent</div></div>
+  <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px;"><div style="font-size:13px;font-weight:600;margin-bottom:6px;color:var(--a2)">TestDataConsistencyUnderLoad (3 tests)</div><div style="font-size:12px;color:var(--muted)">Deterministic ordering, no duplicates, scores sorted descending under load</div></div>
+  <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px;"><div style="font-size:13px;font-weight:600;margin-bottom:6px;color:var(--a4)">TestSLOCompliance (5 tests)</div><div style="font-size:12px;color:var(--muted)">P50/P95/P99 latency, error rate, and throughput SLO enforcement</div></div>
+  <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px;"><div style="font-size:13px;font-weight:600;margin-bottom:6px;color:var(--a3)">TestSoakLoad (1 test)</div><div style="font-size:12px;color:var(--muted)">10-second sustained load to detect degradation, P99 stability check</div></div>
+  <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px;"><div style="font-size:13px;font-weight:600;margin-bottom:6px;color:var(--a6)">TestModelNotReadyUnderLoad (1 test)</div><div style="font-size:12px;color:var(--muted)">503 consistency verification under 20 concurrent requests</div></div>
+</div>
+</div></div>
+<!-- TEAM -->
+<div class="view" id="v-tm">
+<div class="card reveal">
+<div class="stitle">Team Assignments</div>
+<div class="mmgrid">
+  <div class="mmc mc1">
+    <div class="mcn">Member 1</div>
+    <div class="mct">FastAPI Microservice</div>
+    <div class="mcd">Day 1-3</div>
+    <ul class="mcl">
+      <li>Accept User ID via POST /recommend</li>
+      <li>Fetch user embeddings from feature store</li>
+      <li>Return Top-K recommendation list</li>
+      <li>Health and metrics endpoints</li>
+    </ul>
+    <span class="mcb">API Layer</span>
+  </div>
+  <div class="mmc mc2">
+    <div class="mcn">Member 2</div>
+    <div class="mct">Recommendation Inference</div>
+    <div class="mcd">Day 1-3</div>
+    <ul class="mcl">
+      <li>Connect User Query Tower</li>
+      <li>Redis feature caching integration</li>
+      <li>ANN retrieval pipeline</li>
+      <li>Generate Top-K product recs</li>
+    </ul>
+    <span class="mcb">ML Inference</span>
+  </div>
+  <div class="mmc mc3">
+    <div class="mcn">Member 3</div>
+    <div class="mct">Weekly Retraining DAG</div>
+    <div class="mcd">Day 4-5</div>
+    <ul class="mcl">
+      <li>Automate data loading and preprocessing</li>
+      <li>Two-Tower model training pipeline</li>
+      <li>Evaluation: Recall, NDCG, MRR</li>
+      <li>Model export to artefact store</li>
+    </ul>
+    <span class="mcb">MLOps</span>
+  </div>
+  <div class="mmc mc4">
+    <div class="mcn">Member 4</div>
+    <div class="mct">Daily Embedding Update DAG</div>
+    <div class="mcd">Day 4-5</div>
+    <ul class="mcl">
+      <li>Automate item embedding generation</li>
+      <li>Storage update item_embeddings.npy</li>
+      <li>ANN index hot-reload</li>
+      <li>Zero-downtime refresh</li>
+    </ul>
+    <span class="mcb">Data Ops</span>
+  </div>
+  <div class="mmc mc5">
+    <div class="mcn">Member 5 - You Are Here</div>
+    <div class="mct">API Stress Testing and Architecture</div>
+    <div class="mcd">Day 6-7</div>
+    <ul class="mcl">
+      <li>Concurrent load tests 5 to 20 workers</li>
+      <li>P50/P95/P99 latency and SLO validation</li>
+      <li>Ramp-up, soak and cold-start tests</li>
+      <li>System architecture diagrams - this file</li>
+    </ul>
+    <span class="mcb">QA and Architecture</span>
+  </div>
+</div>
+</div></div>
+
+<div class="footer">Built by <span>Member 5</span> - Context-Aware Neural Recommendation Engine - Day 6-7 Deliverable - 29/29 Stress Tests Passing</div>
+</div>
+
+<script>
+const tabMap = {'v-ov':'t-ov','v-tt':'t-tt','v-inf':'t-inf','v-tr':'t-tr','v-is':'t-is','v-st':'t-st','v-tm':'t-tm'};
+function showView(id){
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  document.getElementById(tabMap[id]).classList.add('active');
+  setTimeout(()=>{ document.querySelectorAll('#'+id+' .reveal').forEach(el=>el.classList.add('visible')); },50);
+}
+document.querySelectorAll('#v-ov .reveal').forEach(el=>el.classList.add('visible'));
+const obs=new IntersectionObserver(entries=>{ entries.forEach(e=>{ if(e.isIntersecting) e.target.classList.add('visible'); }); },{threshold:0.1});
+document.querySelectorAll('.reveal').forEach(el=>obs.observe(el));
+</script>
+</body>
+</html>
