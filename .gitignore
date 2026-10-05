@@ -30,7 +30,11 @@ models/trained_model/*
 models/item_vectors/*
 
 # Outputs
-outputs/
+outputs/*
+!outputs/architecture_diagram.html
+
+# Parquet data caches
+*.parquet
 
 # IDE
 .vscode/
