@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import numpy as np
+import tensorflow as tf
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -35,6 +36,8 @@ from pydantic import BaseModel, Field, field_validator
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
 from src.retrieval.ann_search import ExactSearchIndex, IVFIndex
+from src.feature_store.redis_store import RedisUserProfileStore
+from src.model.query_tower import QueryTower
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -46,6 +49,19 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 MODEL_DIR       = os.getenv("MODEL_DIR",    "data/processed/model")
 TOP_K           = int(os.getenv("TOP_K",    "20"))
 REDIS_URL       = os.getenv("REDIS_URL",    "")
+QUERY_TOWER_WEIGHTS = os.getenv(
+    "QUERY_TOWER_WEIGHTS",
+    "data/processed/model_export/query_tower.weights.h5",
+)
+
+REDIS_FEATURE_URL = os.getenv(
+    "REDIS_FEATURE_URL",
+    REDIS_URL or "redis://localhost:6379/0",
+)
+
+QUERY_TOWER_NUM_USERS = int(os.getenv("QUERY_TOWER_NUM_USERS", "51528"))
+QUERY_TOWER_EMBEDDING_DIM = 64
+
 REDIS_TTL_SEC   = int(os.getenv("REDIS_TTL", "300"))
 IVF_NLIST       = int(os.getenv("IVF_NLIST",  "32"))
 IVF_NPROBE      = int(os.getenv("IVF_NPROBE",  "4"))
@@ -70,6 +86,9 @@ _state: Dict[str, Any] = {
     "eval_metrics":      {},
     "startup_time_s":    0.0,
     "redis_client":      None,
+    # Redis user feature store + trained QueryTower
+    "redis_store":       None,
+    "query_tower":       None, 
 }
 
 
@@ -103,14 +122,18 @@ def _cache_get(key: str) -> Optional[List[str]]:
         return None
 
 
+
 def _cache_set(key: str, value: List[str]) -> None:
     client = _state["redis_client"]
     if client is None:
+        logger.warning("Cache write skipped: Redis client is unavailable.")
         return
+
     try:
         client.setex(key, REDIS_TTL_SEC, json.dumps(value))
+        logger.info("Recommendation cache saved: %s", key)
     except Exception:
-        pass
+        logger.exception("Failed to save recommendation cache: %s", key)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -172,6 +195,61 @@ async def lifespan(app: FastAPI):
     _state["num_users"]     = len(_state["user_ids"])
     _state["num_items"]     = len(_state["item_ids"])
     _state["embedding_dim"] = _state["item_embeddings"].shape[1]
+        # Initialize Redis user feature store
+    logger.info("Connecting to Redis user feature store: %s", REDIS_FEATURE_URL)
+
+    redis_store = RedisUserProfileStore(
+        redis_url=REDIS_FEATURE_URL,
+    )
+
+    try:
+        redis_store.ping()
+        _state["redis_store"] = redis_store
+        logger.info("Redis user feature store connected successfully.")
+    except Exception as exc:
+        redis_store.close()
+        raise RuntimeError(
+            f"Redis user feature store is unavailable at "
+            f"{REDIS_FEATURE_URL}: {exc}"
+        ) from exc
+
+    # Load the trained QueryTower used to convert Redis user features
+    # into the 64-dimensional query embedding used by retrieval.
+    logger.info(
+        "Loading QueryTower weights from: %s",
+        QUERY_TOWER_WEIGHTS,
+    )
+
+    query_tower = QueryTower(
+        num_users=QUERY_TOWER_NUM_USERS,
+        embedding_dim=QUERY_TOWER_EMBEDDING_DIM,
+        user_emb_dim=32,
+        context_proj_dim=16,
+        hidden_dim=128,
+        dropout_rate=0.10,
+    )
+
+    # Build the Keras model before loading the weights.
+    dummy_inputs = {
+        "customer_id_idx": tf.constant([1], dtype=tf.int32),
+        "month_sin": tf.constant([0.0], dtype=tf.float32),
+        "month_cos": tf.constant([1.0], dtype=tf.float32),
+        "day_of_week_sin": tf.constant([0.0], dtype=tf.float32),
+        "day_of_week_cos": tf.constant([1.0], dtype=tf.float32),
+        "is_weekend": tf.constant([0], dtype=tf.float32),
+        "days_since_last_purchase": tf.constant([0.0], dtype=tf.float32),
+        "purchase_sequence": tf.constant([0.0], dtype=tf.float32),
+    }
+
+    query_tower(dummy_inputs, training=False)
+    query_tower.load_weights(QUERY_TOWER_WEIGHTS)
+
+    _state["query_tower"] = query_tower
+
+    logger.info(
+        "QueryTower loaded successfully — output dimension=%d.",
+        QUERY_TOWER_EMBEDDING_DIM,
+    )
 
     # Optional Redis cache
     _state["redis_client"] = _init_redis()
@@ -323,7 +401,83 @@ def _get_user_embedding(customer_id: str) -> Optional[np.ndarray]:
     if idx is None:
         return None
     return _state["user_embeddings"][idx : idx + 1]
+def _get_query_embedding_from_redis(
+    customer_id: str,
+) -> Optional[np.ndarray]:
+    """Fetch user features from Redis and generate a QueryTower embedding."""
 
+    store = _state["redis_store"]
+    tower = _state["query_tower"]
+
+    if store is None or tower is None:
+        raise RuntimeError(
+            "Redis feature store or QueryTower is not initialized."
+        )
+
+    features = store.get_query_features(customer_id)
+
+    if features is None:
+        return None
+
+    required = [
+        "customer_id_idx",
+        "month_sin",
+        "month_cos",
+        "day_of_week_sin",
+        "day_of_week_cos",
+        "is_weekend",
+        "days_since_last_purchase",
+        "purchase_sequence",
+    ]
+
+    missing = [
+        name for name in required
+        if name not in features
+    ]
+
+    if missing:
+        raise ValueError(
+            f"Missing Redis query features for {customer_id}: {missing}"
+        )
+
+    inputs = {
+        "customer_id_idx": tf.constant(
+            [int(features["customer_id_idx"])],
+            dtype=tf.int32,
+        ),
+        "month_sin": tf.constant(
+            [float(features["month_sin"])],
+            dtype=tf.float32,
+        ),
+        "month_cos": tf.constant(
+            [float(features["month_cos"])],
+            dtype=tf.float32,
+        ),
+        "day_of_week_sin": tf.constant(
+            [float(features["day_of_week_sin"])],
+            dtype=tf.float32,
+        ),
+        "day_of_week_cos": tf.constant(
+            [float(features["day_of_week_cos"])],
+            dtype=tf.float32,
+        ),
+        "is_weekend": tf.constant(
+            [float(features["is_weekend"])],
+            dtype=tf.float32,
+        ),
+        "days_since_last_purchase": tf.constant(
+            [float(features["days_since_last_purchase"])],
+            dtype=tf.float32,
+        ),
+        "purchase_sequence": tf.constant(
+            [float(features["purchase_sequence"])],
+            dtype=tf.float32,
+        ),
+    }
+
+    embedding = tower(inputs, training=False).numpy()
+
+    return embedding.astype(np.float32)
 
 def _fallback_user_embedding() -> np.ndarray:
     """Return the mean of all user embeddings as a cold-start fallback."""
@@ -366,6 +520,7 @@ def _retrieve_top_k(
 # Endpoints
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 @app.post(
     "/recommend",
     response_model=RecommendResponse,
@@ -375,57 +530,93 @@ def _retrieve_top_k(
 )
 async def recommend(request: RecommendRequest) -> RecommendResponse:
     """
-    Return top-K personalised item recommendations for a customer with optional context.
+    Return top-K personalised item recommendations.
 
-    - Looks up the pre-computed user embedding for `customer_id`.
-    - Falls back to the catalog mean embedding for unknown (cold-start) users.
-    - Performs fast dot-product retrieval against the item embedding index.
-    - Optionally serves from Redis cache to reduce latency on repeated requests.
+    - Fetches user features from Redis.
+    - Uses QueryTower to generate a 64-dimensional query embedding.
+    - Falls back to the catalog mean embedding for unknown users.
+    - Retrieves the top-K items.
+    - Optionally serves cached recommendations.
     """
-    if not _state["ready"]:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Model is not ready yet. Please retry in a moment.",
-        )
-
+ 
     t_start = time.perf_counter()
-    cache_key = f"rec:{request.customer_id}:{request.context.season}:{request.context.is_weekend}:{request.top_k}"
 
-    # ── Cache lookup ──────────────────────────────────────────────────────────
+    cache_key = (
+        f"rec:v2:{request.customer_id}:"
+        f"{request.context.season}:"
+        f"{request.context.is_weekend}:"
+        f"{request.top_k}"
+    )
+
+    # Cache lookup
     cached = _cache_get(cache_key)
+
     if cached is not None:
         recs = [
-            RecommendationItem(rank=i + 1, article_id=item_id, score=0.0)
-            for i, item_id in enumerate(cached)
+            RecommendationItem(
+                rank=i + 1,
+                article_id=item["article_id"],
+                score=float(item["score"]),
+            )
+            for i, item in enumerate(cached)
         ]
+
         elapsed_ms = (time.perf_counter() - t_start) * 1000.0
+
         return RecommendResponse(
             customer_id=request.customer_id,
             context=request.context,
             recommendations=recs,
             retrieval_time_ms=round(elapsed_ms, 3),
             cache_hit=True,
+            cold_start=False,
+        )
+    # Fetch user features from Redis and generate query embedding
+    cold_start = False
+
+    user_emb = _get_query_embedding_from_redis(
+        request.customer_id
+    )
+
+    if user_emb is None:
+        logger.info(
+            "Redis profile not found for user '%s'. "
+            "Using mean embedding.",
+            request.customer_id,
         )
 
-    # ── User embedding lookup (cold-start handling) ───────────────────────────
-    cold_start = False
-    user_emb = _get_user_embedding(request.customer_id)
-    if user_emb is None:
-        logger.info("Cold-start user: '%s'. Using mean embedding.", request.customer_id)
         user_emb = _fallback_user_embedding()
         cold_start = True
 
-    # ── Retrieve top-K ────────────────────────────────────────────────────────
+    # Retrieve top-K (runs for both normal and cold-start users)
     effective_k = min(request.top_k, _state["num_items"])
-    recommendations = _retrieve_top_k(user_emb, top_k=effective_k)
 
-    # ── Cache result ──────────────────────────────────────────────────────────
-    _cache_set(cache_key, [r.article_id for r in recommendations])
+    recommendations = _retrieve_top_k(
+        user_emb,
+        top_k=effective_k,
+    )
+
+  
+
+    # Cache result: preserve article IDs and recommendation scores
+    _cache_set(
+        cache_key,
+        [
+            {
+                "article_id": r.article_id,
+                "score": float(r.score),
+            }
+            for r in recommendations
+        ],
+    )
 
     elapsed_ms = (time.perf_counter() - t_start) * 1000.0
     logger.info(
         "Recommend: customer=%s, k=%d, cold_start=%s, latency=%.2fms",
-        request.customer_id, effective_k, cold_start, elapsed_ms,
+        request.customer_id,
+        effective_k,
+        cold_start,
+        elapsed_ms,
     )
 
     return RecommendResponse(
@@ -436,7 +627,6 @@ async def recommend(request: RecommendRequest) -> RecommendResponse:
         cache_hit=False,
         cold_start=cold_start,
     )
-
 
 @app.get(
     "/health",
