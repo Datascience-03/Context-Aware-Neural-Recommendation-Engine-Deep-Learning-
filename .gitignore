@@ -20,10 +20,15 @@ data/raw/*
 
 data/processed/*
 !data/processed/.gitkeep
+!data/processed/articles_catalog.json
+!data/processed/model_export/
+!data/processed/model_export/**
+!data/processed/model/
+!data/processed/model/**
 
-# Reduced dataset - tracked using Git LFS
-!data/reduced/
-!data/reduced/*.csv
+# Reduced dataset
+data/reduced/*
+!data/reduced/.gitkeep
 
 # Trained models
 models/trained_model/*

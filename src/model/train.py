@@ -246,7 +246,7 @@ class ModelTrainer:
                 verbose=1,
             ),
             tf.keras.callbacks.ModelCheckpoint(
-                filepath=str(self.output_dir / "best_weights.h5"),
+                filepath=str(self.output_dir / "best_weights.weights.h5"),
                 monitor="val_loss" if val_dataset is not None else "loss",
                 save_best_only=True,
                 save_weights_only=True,
@@ -362,7 +362,7 @@ class ModelTrainer:
         """Save final model weights to output_dir/final_weights.h5."""
         if self.model is None:
             raise RuntimeError("No model to save.")
-        path = str(self.output_dir / "final_weights.h5")
+        path = str(self.output_dir / "final_weights.weights.h5")
         self.model.save_weights(path)
         logger.info("Final model weights saved → %s", path)
 
@@ -392,7 +392,13 @@ class ModelTrainer:
 # ─────────────────────────────────────────────────────────────────────────────
 # Standalone demo — trains on synthetic data and exports embeddings
 # ─────────────────────────────────────────────────────────────────────────────
-def _make_synthetic_df(n_rows: int, num_users: int, num_items: int) -> pd.DataFrame:
+def _make_synthetic_df(
+    n_rows: int,
+    num_users: int,
+    num_items: int,
+    num_product_groups: int = 20,
+    num_colour_groups: int = 50,
+) -> pd.DataFrame:
     """Generate synthetic training interactions DataFrame."""
     rng = np.random.default_rng(42)
     angles = rng.uniform(0, 2 * np.pi, n_rows)
@@ -406,8 +412,8 @@ def _make_synthetic_df(n_rows: int, num_users: int, num_items: int) -> pd.DataFr
         "days_since_last_purchase":   rng.uniform(0, 60, n_rows).astype(np.float32),
         "purchase_sequence":          rng.integers(1, 30, n_rows).astype(np.float32),
         "article_id_idx":             rng.integers(1, num_items + 1, n_rows).astype(np.int32),
-        "product_group_name_idx":     rng.integers(1, 21, n_rows).astype(np.int32),
-        "colour_group_name_idx":      rng.integers(1, 51, n_rows).astype(np.int32),
+        "product_group_name_idx":     rng.integers(1, num_product_groups + 1, n_rows).astype(np.int32),
+        "colour_group_name_idx":      rng.integers(1, num_colour_groups + 1, n_rows).astype(np.int32),
         "popularity_over_time":       rng.uniform(1, 200, n_rows).astype(np.float32),
     })
 
@@ -464,7 +470,11 @@ if __name__ == "__main__":
     print(f"    Final Top-1 Accuracy  : {final_acc:.4f}")
 
     print("\n[6] Exporting user & item embeddings...")
-    # Unique user / item feature snapshots (last occurrence per user/item)
+# Unique user / item feature snapshots (first occurrence per user/item)
+    user_feat_df = df_all.drop_duplicates(subset="customer_id_idx") \
+                     .sort_values("customer_id_idx").reset_index(drop=True)
+    item_feat_df = df_all.drop_duplicates(subset="article_id_idx") \
+                     .sort_values("article_id_idx").reset_index(drop=True)
     user_feat_df = df_all.drop_duplicates(subset="customer_id_idx") \
                          .sort_values("customer_id_idx").reset_index(drop=True)
     item_feat_df = df_all.drop_duplicates(subset="article_id_idx") \
