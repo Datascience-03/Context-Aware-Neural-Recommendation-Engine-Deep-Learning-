@@ -19,6 +19,7 @@ import tempfile
 import shutil
 
 import numpy as np
+import pandas as pd
 import pytest
 
 # Skip entire module if TensorFlow is not installed
@@ -318,7 +319,13 @@ class TestModelTrainer:
     def test_build_tf_dataset_shape(self):
         """Dataset batches should have the expected feature keys and integer types."""
         trainer = self._make_trainer()
-        df = _make_synthetic_df(n_rows=64, num_users=NUM_USERS, num_items=NUM_ITEMS)
+        df = _make_synthetic_df(
+            n_rows=64,
+            num_users=NUM_USERS,
+            num_items=NUM_ITEMS,
+            num_product_groups=NUM_PRODUCT_GROUPS,
+            num_colour_groups=NUM_COLOUR_GROUPS,
+        )
         ds = trainer.build_tf_dataset(df, shuffle=False, drop_remainder=True)
         batch = next(iter(ds))
         assert "customer_id_idx" in batch
@@ -329,7 +336,13 @@ class TestModelTrainer:
     def test_training_loop_runs(self):
         """Training for 2 epochs on 128 synthetic rows should finish without error."""
         trainer = self._make_trainer()
-        df = _make_synthetic_df(n_rows=128, num_users=NUM_USERS, num_items=NUM_ITEMS)
+        df = _make_synthetic_df(
+            n_rows=128,
+            num_users=NUM_USERS,
+            num_items=NUM_ITEMS,
+            num_product_groups=NUM_PRODUCT_GROUPS,
+            num_colour_groups=NUM_COLOUR_GROUPS,
+        )
         trainer.build_model(
             num_users=NUM_USERS,
             num_items=NUM_ITEMS,
@@ -344,7 +357,13 @@ class TestModelTrainer:
     def test_save_item_embeddings_shape(self):
         """Saved item embeddings should have shape (unique_items, EMB_DIM)."""
         trainer = self._make_trainer()
-        df = _make_synthetic_df(n_rows=128, num_users=NUM_USERS, num_items=NUM_ITEMS)
+        df = _make_synthetic_df(
+            n_rows=128,
+            num_users=NUM_USERS,
+            num_items=NUM_ITEMS,
+            num_product_groups=NUM_PRODUCT_GROUPS,
+            num_colour_groups=NUM_COLOUR_GROUPS,
+        )
         trainer.build_model(
             num_users=NUM_USERS, num_items=NUM_ITEMS,
             num_product_groups=NUM_PRODUCT_GROUPS,
@@ -365,7 +384,13 @@ class TestModelTrainer:
     def test_load_embeddings(self):
         """load_embeddings() should correctly reload .npy files from disk."""
         trainer = self._make_trainer()
-        df = _make_synthetic_df(n_rows=128, num_users=NUM_USERS, num_items=NUM_ITEMS)
+        df = _make_synthetic_df(
+            n_rows=128,
+            num_users=NUM_USERS,
+            num_items=NUM_ITEMS,
+            num_product_groups=NUM_PRODUCT_GROUPS,
+            num_colour_groups=NUM_COLOUR_GROUPS,
+        )
         trainer.build_model(
             num_users=NUM_USERS, num_items=NUM_ITEMS,
             num_product_groups=NUM_PRODUCT_GROUPS,

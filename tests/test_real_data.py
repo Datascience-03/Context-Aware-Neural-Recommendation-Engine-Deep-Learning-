@@ -1,7 +1,15 @@
+import os
 import pandas as pd
+import pytest
 
 
 DATA_PATH = "data/processed/transactions_articles_clean.csv"
+
+
+@pytest.fixture(autouse=True)
+def check_data_exists():
+    if not os.path.exists(DATA_PATH):
+        pytest.skip(f"Processed dataset '{DATA_PATH}' is not present. Run the ingestion pipeline first.")
 
 
 def test_real_hm_dataset_has_no_missing_values():

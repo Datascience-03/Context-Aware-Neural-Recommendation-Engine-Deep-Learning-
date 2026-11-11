@@ -15,7 +15,11 @@ def store():
     try:
         feature_store.ping()
     except Exception:
-        pytest.skip("Redis server is not available.")
+        try:
+            import fakeredis
+            feature_store.client = fakeredis.FakeRedis(decode_responses=True)
+        except Exception:
+            pytest.skip("Redis server is not available.")
 
     yield feature_store
     feature_store.close()

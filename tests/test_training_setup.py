@@ -1,8 +1,15 @@
-﻿import pytest
-import torch
-import torch.nn as nn
-from src.losses import InBatchInfoNCELoss
-from src.optimizer import build_optimizer, build_scheduler
+import pytest
+
+try:
+    import torch
+    import torch.nn as nn
+    from src.losses import InBatchInfoNCELoss
+    from src.optimizer import build_optimizer, build_scheduler
+except (ImportError, OSError) as exc:
+    pytest.skip(
+        f"PyTorch unavailable ({exc}), skipping PyTorch tests.",
+        allow_module_level=True,
+    )
 
 class DummyTwoTowerModel(nn.Module):
     def __init__(self, input_dim=16, embed_dim=32):

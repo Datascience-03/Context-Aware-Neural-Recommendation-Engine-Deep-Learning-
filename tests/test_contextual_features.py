@@ -1,6 +1,8 @@
 
+import os
 import sys
 from pathlib import Path
+import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
@@ -108,6 +110,8 @@ def test_popularity_feature_exists_and_has_no_missing_values():
 
 def test_real_hm_contextual_features():
     path = "data/processed/contextual_features.csv"
+    if not os.path.exists(path):
+        pytest.skip(f"Processed file {path} not found. Run pipeline first.")
     df = pd.read_csv(path)
 
     expected_columns = [

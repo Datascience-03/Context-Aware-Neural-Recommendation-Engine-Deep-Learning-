@@ -2,15 +2,14 @@ import redis
 import numpy as np
 
 # 1. Connect to Redis
-r = redis.Redis(host="localhost", port=6379, db=0)
-
-# Verify connection
 try:
+    r = redis.Redis(host="localhost", port=6379, db=0)
     r.ping()
     print(" Successfully connected to Redis!")
-except redis.ConnectionError:
-    print(" Connection failed. Make sure Redis is running.")
-    exit(1)
+except Exception:
+    import fakeredis
+    r = fakeredis.FakeRedis()
+    print(" Live Redis not running. Using FakeRedis (in-memory mock).")
 
 # 2. Define schema constants
 DIMENSION = 128  # Example dimension

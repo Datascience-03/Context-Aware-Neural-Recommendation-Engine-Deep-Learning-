@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from src.feature_store.redis_item_vector_store import RedisItemVectorStore
 
@@ -11,6 +12,14 @@ def create_store():
         redis_url="redis://localhost:6379/0",
         key_prefix=TEST_PREFIX,
     )
+    try:
+        store.ping()
+    except Exception:
+        try:
+            import fakeredis
+            store.client = fakeredis.FakeRedis(decode_responses=False)
+        except Exception:
+            pytest.skip("Redis server is not available.")
     store.clear_all_item_vectors()
     return store
 

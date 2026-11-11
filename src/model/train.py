@@ -392,7 +392,13 @@ class ModelTrainer:
 # ─────────────────────────────────────────────────────────────────────────────
 # Standalone demo — trains on synthetic data and exports embeddings
 # ─────────────────────────────────────────────────────────────────────────────
-def _make_synthetic_df(n_rows: int, num_users: int, num_items: int) -> pd.DataFrame:
+def _make_synthetic_df(
+    n_rows: int,
+    num_users: int,
+    num_items: int,
+    num_product_groups: int = 20,
+    num_colour_groups: int = 50,
+) -> pd.DataFrame:
     """Generate synthetic training interactions DataFrame."""
     rng = np.random.default_rng(42)
     angles = rng.uniform(0, 2 * np.pi, n_rows)
@@ -406,8 +412,8 @@ def _make_synthetic_df(n_rows: int, num_users: int, num_items: int) -> pd.DataFr
         "days_since_last_purchase":   rng.uniform(0, 60, n_rows).astype(np.float32),
         "purchase_sequence":          rng.integers(1, 30, n_rows).astype(np.float32),
         "article_id_idx":             rng.integers(1, num_items + 1, n_rows).astype(np.int32),
-        "product_group_name_idx":     rng.integers(1, 21, n_rows).astype(np.int32),
-        "colour_group_name_idx":      rng.integers(1, 51, n_rows).astype(np.int32),
+        "product_group_name_idx":     rng.integers(1, num_product_groups + 1, n_rows).astype(np.int32),
+        "colour_group_name_idx":      rng.integers(1, num_colour_groups + 1, n_rows).astype(np.int32),
         "popularity_over_time":       rng.uniform(1, 200, n_rows).astype(np.float32),
     })
 

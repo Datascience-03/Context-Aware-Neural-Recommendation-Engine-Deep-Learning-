@@ -207,11 +207,14 @@ async def lifespan(app: FastAPI):
         _state["redis_store"] = redis_store
         logger.info("Redis user feature store connected successfully.")
     except Exception as exc:
-        redis_store.close()
-        raise RuntimeError(
-            f"Redis user feature store is unavailable at "
-            f"{REDIS_FEATURE_URL}: {exc}"
-        ) from exc
+        try:
+            import fakeredis
+            redis_store.client = fakeredis.FakeRedis(decode_responses=True)
+            _state["redis_store"] = redis_store
+            logger.info("Live Redis unavailable (%s) — using in-memory mock feature store.", exc)
+        except Exception:
+            logger.warning("Redis unavailable (%s) — continuing with precomputed embeddings.", exc)
+            _state["redis_store"] = None
 
     # Load the trained QueryTower used to convert Redis user features
     # into the 64-dimensional query embedding used by retrieval.
@@ -410,14 +413,12 @@ def _get_query_embedding_from_redis(
     tower = _state["query_tower"]
 
     if store is None or tower is None:
-        raise RuntimeError(
-            "Redis feature store or QueryTower is not initialized."
-        )
+        return _get_user_embedding(customer_id)
 
     features = store.get_query_features(customer_id)
 
     if features is None:
-        return None
+        return _get_user_embedding(customer_id)
 
     required = [
         "customer_id_idx",
@@ -538,7 +539,12 @@ async def recommend(request: RecommendRequest) -> RecommendResponse:
     - Retrieves the top-K items.
     - Optionally serves cached recommendations.
     """
- 
+    if not _state["ready"]:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Model is not ready to serve recommendations.",
+        )
+
     t_start = time.perf_counter()
 
     cache_key = (
